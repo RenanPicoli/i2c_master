@@ -26,7 +26,18 @@ entity i2c_master is
 end i2c_master;
 
 architecture structure of i2c_master is
-
+	component address_decoder_register_map
+	--N: address width in bits
+	--boundaries: upper limits of each end (except the last, which is 2**N-1)
+	generic	(N: natural);
+	port(	ADDR: in std_logic_vector(N-1 downto 0);-- input
+			RDEN: in std_logic;-- input
+			WREN: in std_logic;-- input
+			WREN_OUT: out std_logic_vector;-- output
+			data_in: in array32;-- input: outputs of all peripheral/registers
+			data_out: out std_logic_vector(31 downto 0)-- data read
+	);
+	end component;
 begin
 
 end structure;
