@@ -78,11 +78,11 @@ begin
 		end if;
 	end process;
 	
-	process(bits_sent,CLK,scl_en_set,RST)
+	process(bits_sent,SCL,scl_en_set,RST)
 	begin
 		if (RST ='1') then
 			scl_en_rst <= '0';
-		elsif (bits_sent = N+1 and CLK = '1') then
+		elsif (bits_sent = N+1 and SCL = '1') then
 			scl_en_rst <= '1';
 		elsif (rising_edge(scl_en_set)) then
 			scl_en_rst <= '0';
@@ -101,14 +101,12 @@ begin
 			bits_sent <= 0;
 		elsif (WREN = '1') then
 			fifo_sda <= '0' & DR & '0';--start bit & DR & stop bit
-		elsif(tx='1' and falling_edge(CLK))then--updates fifo at falling edge so it can be read in rising_edge
+		elsif(tx='1' and falling_edge(CLK))then--updates fifo at falling edge so it can be read at rising_edge
 			fifo_sda <= fifo_sda(N downto 0) & '1';--MSB is sent first
 			bits_sent <= bits_sent + 1;
 			if (bits_sent = N+1) then
 				fifo_empty <= '1';
 				bits_sent <= 0;
-			else
-				fifo_empty <= '0';
 			end if;
 		end if;
 
