@@ -14,7 +14,7 @@ use ieee.numeric_std.all;--to_integer
 entity i2c_master_generic is
 	generic (N: natural);--number of bits in each data written/read
 	port (
-			DR: inout std_logic_vector(N-1 downto 0);--to store data to be transmitted or received
+			DR: in std_logic_vector(N-1 downto 0);--to store data to be transmitted or received
 			CLK: in std_logic;--clock input, same frequency as SCL, used to generate SCL
 			ADDR: in std_logic_vector(7 downto 0);--address offset of registers relative to peripheral base address
 			WREN: in std_logic;--enables register write
@@ -48,11 +48,11 @@ begin
 	end process;
 	
 	process (fifo_empty,CLK,tx_set)
-	begin
-		if(tx_set = '1') then
-			tx_rst <= '0';
-		elsif(fifo_empty'event and fifo_empty='1') then--moment of start of shifting DR (transmission of address)
+	begin		
+		if(fifo_empty='1') then--moment of start of shifting DR (transmission of address)
 			tx_rst <= '1';
+		elsif(tx_set'event and tx_set = '1') then
+			tx_rst <= '0';
 		end if;
 	end process;
 	
@@ -64,10 +64,11 @@ begin
 		if(tx='1')then
 			SCL <= CLK;
 		end if;
+
 		if (WREN = '1') then
 			fifo_sda <= '0' & DR & '0';--start bit & DR & stop bit
 		elsif(tx='1' and falling_edge(CLK))then--updates fifo at falling edge so it can be read in rising_edge
-			fifo_sda <= fifo_sda(N downto 0) & '0';--MSB is sent first
+			fifo_sda <= fifo_sda(N downto 0) & '1';--MSB is sent first
 			SDA <= fifo_sda(N);
 			bits_sent <= bits_sent + 1;
 			if (bits_sent = N+2) then

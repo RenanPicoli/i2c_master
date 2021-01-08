@@ -44,7 +44,7 @@ architecture structure of i2c_master is
 	component i2c_master_generic
 	generic (N: natural);--number of bits in each data written/read
 	port (
-			DR: inout std_logic_vector(N-1 downto 0);--to store data to be transmitted or received
+			DR: in std_logic_vector(N-1 downto 0);--to store data to be transmitted or received
 			CLK: in std_logic;--clock input, same frequency as SCL, used to generate SCL
 			ADDR: in std_logic_vector(7 downto 0);--address offset of registers relative to peripheral base address
 			WREN: in std_logic;--enables register write
