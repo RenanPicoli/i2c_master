@@ -47,7 +47,7 @@ architecture structure of i2c_master is
 	port (
 			DR: in std_logic_vector(N-1 downto 0);--to store data to be transmitted or received
 			ADDR: in std_logic_vector(7 downto 0);--address offset of registers relative to peripheral base address
-			CLK: in std_logic;--clock input, same frequency as SCL, used to generate SCL
+			CLK_IN: in std_logic;--clock input, same frequency as SCL, divided by 2 to generate SCL
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write
 			IACK: in std_logic;--interrupt acknowledgement
@@ -66,7 +66,7 @@ begin
 	i2c: i2c_master_generic
 	generic map (N => N)
 	port map(DR => dr_byte,
-				CLK => CLK,
+				CLK_IN => CLK,
 				ADDR => ADDR,
 				RST => RST,
 				WREN => WREN,

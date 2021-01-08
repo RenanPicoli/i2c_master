@@ -44,12 +44,12 @@ begin
 				SCL	=>	SCL
 	);
 	
-	clock: process--100kHz input clock
+	clock: process--200kHz input clock
 	begin
 		CLK <= '0';
-		wait for 5 us;
+		wait for 2.5 us;
 		CLK <= '1';
-		wait for 5 us;
+		wait for 2.5 us;
 	end process clock;
 	
 	wren_assign: process

@@ -16,7 +16,7 @@ entity i2c_master_generic is
 	port (
 			DR: in std_logic_vector(N-1 downto 0);--to store data to be transmitted or received
 			ADDR: in std_logic_vector(7 downto 0);--address offset of registers relative to peripheral base address
-			CLK: in std_logic;--clock input, same frequency as SCL, used to generate SCL
+			CLK_IN: in std_logic;--clock input, same frequency as SCL, divided by 2 to generate SCL
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write
 			IACK: in std_logic;--interrupt acknowledgement
@@ -27,11 +27,34 @@ entity i2c_master_generic is
 end i2c_master_generic;
 
 architecture structure of i2c_master_generic is
+
+	component prescaler
+	generic(factor: integer);
+	port (CLK_IN: in std_logic;--50MHz input
+			rst: in std_logic;--synchronous reset
+			CLK_OUT: out std_logic--output clock
+	);
+	end component;
+
+	signal fifo_sda: std_logic_vector(N+1 downto 0);--one byte plus start and stop
+	
+	--signals representing I2C transfer state
+	signal read_mode: std_logic;-- 1 means reading from slave, 0 means writing on slave.
 	signal tx: std_logic;--flag indicating it is transmitting
+	signal rx: std_logic;--flag indicating it is receiving
+	signal ack: std_logic;--active HIGH, indicates slave-receiver acknowledged / master receiver acknowledged
+	signal start: std_logic;-- indicates start bit being transmitted (also applies to repeated start)
+	signal stop: std_logic;-- indicates stop bit being transmitted
+	
+	--signals inherent to this implementation
+	signal CLK: std_logic;--used to generate SCL (when scl_en = '1')
+	signal fifo_empty: std_logic;
+	signal bits_sent: natural;--number of bits transmitted
+	signal bits_received: natural;--number of bits received
+	
 	signal tx_set: std_logic;--sets tx
 	signal tx_rst: std_logic;--resets tx
 	
-	signal rx: std_logic;--flag indicating it is receiving
 	signal rx_set: std_logic;--sets rx
 	signal rx_rst: std_logic;--resets rx
 	
@@ -39,10 +62,15 @@ architecture structure of i2c_master_generic is
 	signal scl_en_set: std_logic;--sets scl_en
 	signal scl_en_rst: std_logic;--resets scl_en
 	
-	signal fifo_empty: std_logic;
-	signal fifo_sda: std_logic_vector(N+1 downto 0);--one byte plus start and stop
-	signal bits_sent: natural;--number of bits transmitted
 begin
+
+	scl_clk: prescaler
+	generic map (factor => 2)
+	port map(CLK_IN	=> CLK_IN,
+				RST		=> RST,
+				CLK_OUT	=> CLK
+	);
+	
 	process (WREN,CLK,tx_rst,RST)
 	begin
 		if (RST ='1') then
