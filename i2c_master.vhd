@@ -1,6 +1,7 @@
 --------------------------------------------------
 --I2C master peripheral
 --by Renan Picoli de Souza
+--instantiates a generic I2C master and provides access to its registers 
 --supports only 8 bit sending/receiving
 -- NO support for clock stretching
 --------------------------------------------------
@@ -9,6 +10,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.std_logic_unsigned.all;
 use ieee.numeric_std.all;--to_integer
+use work.my_types.all;--array32
 
 entity i2c_master is
 	port (
@@ -21,7 +23,7 @@ entity i2c_master is
 			Q: out std_logic_vector(31 downto 0);--for register read
 			IRQ: out std_logic;--interrupt request
 			SDA: inout std_logic;--open drain data line
-			SCL: inout std_logic;--open drain clock line
+			SCL: inout std_logic --open drain clock line
 	);
 end i2c_master;
 
@@ -38,6 +40,36 @@ architecture structure of i2c_master is
 			data_out: out std_logic_vector(31 downto 0)-- data read
 	);
 	end component;
+	
+	component i2c_master_generic
+	generic (N: natural);--number of bits in each data written/read
+	port (
+			DR: inout std_logic_vector(N-1 downto 0);--to store data to be transmitted or received
+			CLK: in std_logic;--clock input, same frequency as SCL, used to generate SCL
+			ADDR: in std_logic_vector(7 downto 0);--address offset of registers relative to peripheral base address
+			WREN: in std_logic;--enables register write
+			IACK: in std_logic;--interrupt acknowledgement
+			IRQ: out std_logic;--interrupt request
+			SDA: inout std_logic;--open drain data line
+			SCL: inout std_logic --open drain clock line
+	);
+	end component;
+	
+	constant N: natural := 4;--number of bits in each data written/read
+	signal dr_byte: std_logic_vector(N-1 downto 0);
 begin
 
+	dr_byte <= D(N-1 downto 0);
+	
+	i2c: i2c_master_generic
+	generic map (N => N)
+	port map(DR => dr_byte,
+				CLK => CLK,
+				ADDR => ADDR,
+				WREN => WREN,
+				IACK => IACK,
+				IRQ => IRQ,
+				SDA => SDA,
+				SCL => SCL
+	);
 end structure;
