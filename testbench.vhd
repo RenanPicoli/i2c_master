@@ -14,11 +14,12 @@ architecture test of testbench is
 constant TIME_DELTA : time := 44 us;
 
 --reset duration must be long enough to be perceived by the slowest clock (filter clock, both polarities)
-constant TIME_RST : time := 50 us;
+constant TIME_RST : time := 5 us;
 
 signal D: std_logic_vector(31 downto 0);--for register write
 signal CLK: std_logic;--for register read/write, also used to generate SCL
 signal ADDR: std_logic_vector(7 downto 0);--address offset of registers relative to peripheral base address
+signal RST:	std_logic;--reset
 signal WREN: std_logic;--enables register write
 signal RDEN: std_logic;--enables register read
 signal IACK: std_logic;--interrupt acknowledgement
@@ -33,6 +34,7 @@ begin
 	port map(D 		=> D,
 				CLK	=> CLK,
 				ADDR 	=> ADDR,
+				RST	=>	RST,
 				WREN	=> WREN,
 				RDEN	=>	RDEN,
 				IACK	=> IACK,
@@ -53,7 +55,7 @@ begin
 	wren_assign: process
 	begin
 		WREN <= '0';
-		wait for 5 us;
+		wait for (TIME_RST + 5 us);
 		
 		WREN <= '1';
 		wait for 5 us;
@@ -64,5 +66,6 @@ begin
 	
 	D <= x"0000_0009";--1001
 	ADDR <= x"1A";
+	RST <= '1', '0' after TIME_RST;
 	
 end architecture test;
