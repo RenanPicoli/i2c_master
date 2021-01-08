@@ -8,8 +8,8 @@
 
 library ieee;
 use ieee.std_logic_1164.all;
-use ieee.std_logic_unsigned.all;
-use ieee.numeric_std.all;--to_integer
+--use ieee.std_logic_unsigned.all;
+--use ieee.numeric_std.all;--to_integer
 use work.my_types.all;--array32
 
 entity i2c_master is

@@ -8,8 +8,8 @@
 
 library ieee;
 use ieee.std_logic_1164.all;
-use ieee.std_logic_unsigned.all;
-use ieee.numeric_std.all;--to_integer
+--use ieee.std_logic_unsigned.all;
+--use ieee.numeric_std.all;--to_integer
 
 entity i2c_master_generic is
 	generic (N: natural);--number of bits in each data written/read
