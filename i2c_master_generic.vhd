@@ -29,13 +29,17 @@ architecture structure of i2c_master_generic is
 	signal tx: std_logic;--flag indicating it is transmitting
 	signal tx_set: std_logic;--sets tx
 	signal tx_rst: std_logic;--resets tx
+	
 	signal rx: std_logic;--flag indicating it is receiving
-	signal rx_set: std_logic;--sets tx
-	signal rx_rst: std_logic;--resets tx
+	signal rx_set: std_logic;--sets rx
+	signal rx_rst: std_logic;--resets rx
+	
+	signal scl_en: std_logic;--enables scl to follow CLK
+	signal scl_en_set: std_logic:='0';--sets scl_en
+	signal scl_en_rst: std_logic:='0';--resets scl_en
 	
 	signal fifo_empty: std_logic:='0';
 	signal fifo_sda: std_logic_vector(N+1 downto 0);--one byte plus start and stop
-	signal fifo_scl: std_logic_vector(N+1 downto 0);--one byte plus start and stop
 	signal bits_sent: natural := 0;--number of bits transmitted
 begin
 	process (WREN,CLK,tx_rst)
@@ -58,13 +62,30 @@ begin
 	
 	tx <= tx_set and (not tx_rst);
 	
-	--serial write on bus
+	process(tx,rx,CLK,scl_en_rst)
+	begin
+		if(scl_en_rst = '1') then
+			scl_en_set <= '0';
+		elsif ((tx ='1' or rx = '1') and falling_edge(CLK)) then
+			scl_en_set <= '1';
+		end if;
+	end process;
+	
+	process(bits_sent,CLK,scl_en_set)
+	begin
+		if (bits_sent = N+2 and CLK = '1') then
+			scl_en_rst <= '1';
+		elsif (rising_edge(scl_en_set)) then
+			scl_en_rst <= '0';
+		end if;
+	end process;
+	
+	scl_en <= scl_en_set and (not scl_en_rst);
+	SCL <= CLK when (scl_en = '1') else '1';
+	
+	--serial write on SDA bus
 	serial_w: process(tx,CLK,WREN,DR)
 	begin
-		if(tx='1')then
-			SCL <= CLK;
-		end if;
-
 		if (WREN = '1') then
 			fifo_sda <= '0' & DR & '0';--start bit & DR & stop bit
 		elsif(tx='1' and falling_edge(CLK))then--updates fifo at falling edge so it can be read in rising_edge
