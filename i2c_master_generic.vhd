@@ -95,7 +95,7 @@ begin
 			scl_en	<= '0';
 		elsif (bits_sent = N+1 and SCL = '1') then
 			scl_en	<= '0';
-		elsif	((tx ='1' or rx = '1') and falling_edge(CLK)) then
+		elsif	((tx ='1' or rx ='1') and falling_edge(CLK)) then
 			scl_en <= '1';
 		end if;
 	end process;
@@ -103,7 +103,7 @@ begin
 
 	---------------SDA write----------------------------
 	--serial write on SDA bus
-	serial_w: process(tx,CLK,WREN,DR,RST)
+	serial_w: process(tx,CLK_90_lead,WREN,DR,RST)
 	begin
 		if (RST ='1') then
 			fifo_sda <= (others => '1');
@@ -111,7 +111,7 @@ begin
 			bits_sent <= 0;
 		elsif (WREN = '1') then
 			fifo_sda <= '0' & DR & '0';--start bit & DR & stop bit
-		elsif(tx='1' and falling_edge(CLK))then--updates fifo at falling edge so it can be read at rising_edge
+		elsif(tx='1' and rising_edge(CLK_90_lead))then--updates fifo at falling edge so it can be read at rising_edge
 			fifo_sda <= fifo_sda(N downto 0) & '1';--MSB is sent first
 			bits_sent <= bits_sent + 1;
 			if (bits_sent = N+1) then
