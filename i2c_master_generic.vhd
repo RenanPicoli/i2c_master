@@ -79,7 +79,7 @@ begin
 	);
 	
 	---------------tx flag generation----------------------------
-	process(fifo_empty,CLK,WREN,RST)
+	process(fifo_empty,WREN,RST)
 	begin
 		if (RST ='1') then
 			tx	<= '0';
@@ -91,29 +91,16 @@ begin
 	end process;
 	
 	---------------SCL generation----------------------------
-	process(tx,rx,CLK,scl_en_rst,RST)
+	process(bits_sent,SCL,tx,rx,CLK,RST)
 	begin
 		if (RST ='1') then
-			scl_en_set <= '0';
-		elsif(scl_en_rst = '1') then
-			scl_en_set <= '0';
-		elsif ((tx ='1' or rx = '1') and falling_edge(CLK)) then
-			scl_en_set <= '1';
-		end if;
-	end process;
-	
-	process(bits_sent,SCL,scl_en_set,RST)
-	begin
-		if (RST ='1') then
-			scl_en_rst <= '0';
+			scl_en	<= '0';
 		elsif (bits_sent = N+1 and SCL = '1') then
-			scl_en_rst <= '1';
-		elsif (rising_edge(scl_en_set)) then
-			scl_en_rst <= '0';
+			scl_en	<= '0';
+		elsif	((tx ='1' or rx = '1') and falling_edge(CLK)) then
+			scl_en <= '1';
 		end if;
 	end process;
-	
-	scl_en <= scl_en_set and (not scl_en_rst);
 	SCL <= CLK when (scl_en = '1') else '1';
 
 	---------------SDA write----------------------------
