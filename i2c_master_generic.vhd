@@ -57,18 +57,12 @@ architecture structure of i2c_master_generic is
 	signal bits_sent: natural;--number of bits transmitted
 	signal bits_received: natural;--number of bits received
 	
-	signal tx_set: std_logic;--sets tx
-	signal tx_rst: std_logic;--resets tx
-	
-	signal rx_set: std_logic;--sets rx
-	signal rx_rst: std_logic;--resets rx
-	
 	signal scl_en: std_logic;--enables scl to follow CLK
 	signal scl_en_set: std_logic;--sets scl_en
 	signal scl_en_rst: std_logic;--resets scl_en
 	
 begin
-
+	---------------clock generation----------------------------
 	scl_clk: prescaler
 	generic map (factor => 2)
 	port map(CLK_IN	=> CLK_IN,
@@ -84,30 +78,19 @@ begin
 				CLK_OUT	=> CLK_90_lead
 	);
 	
-	process (WREN,CLK,tx_rst,RST)
+	---------------tx flag generation----------------------------
+	process(fifo_empty,CLK,WREN,RST)
 	begin
 		if (RST ='1') then
-			tx_set <= '0';
-		elsif (tx_rst = '1') then
-			tx_set <= '0';
-		elsif(WREN'event and WREN='1') then--moment of start of shifting DR (transmission of address)
-			tx_set <= '1';
+			tx	<= '0';
+		elsif (fifo_empty='1') then
+			tx	<= '0';
+		elsif	(WREN'event and WREN='1') then
+			tx <= '1';
 		end if;
 	end process;
 	
-	process (fifo_empty,CLK,tx_set,RST)
-	begin
-		if (RST ='1') then
-			tx_rst <= '0';
-		elsif(fifo_empty='1') then--moment of start of shifting DR (transmission of address)
-			tx_rst <= '1';
-		elsif(tx_set'event and tx_set = '1') then
-			tx_rst <= '0';
-		end if;
-	end process;
-	
-	tx <= tx_set and (not tx_rst);
-	
+	---------------SCL generation----------------------------
 	process(tx,rx,CLK,scl_en_rst,RST)
 	begin
 		if (RST ='1') then
@@ -132,7 +115,8 @@ begin
 	
 	scl_en <= scl_en_set and (not scl_en_rst);
 	SCL <= CLK when (scl_en = '1') else '1';
-	
+
+	---------------SDA write----------------------------
 	--serial write on SDA bus
 	serial_w: process(tx,CLK,WREN,DR,RST)
 	begin
@@ -154,6 +138,32 @@ begin
 	end process;
 	SDA <= fifo_sda(N+1);
 	
+	---------------rx flag generation----------------------------
+--	process (WREN,CLK,tx_rst,RST)
+--	begin
+--		if (RST ='1') then
+--			rx_set <= '0';
+--		elsif (tx_rst = '1') then
+--			rx_set <= '0';
+--		elsif(WREN'event and WREN='1') then--moment of start of shifting DR (receiving data from slave)
+--			rx_set <= '1';
+--		end if;
+--	end process;
+--	
+--	process (fifo_empty,CLK,tx_set,RST)
+--	begin
+--		if (RST ='1') then
+--			tx_rst <= '0';
+--		elsif(fifo_empty='1') then--moment of start of shifting DR (transmission of address)
+--			tx_rst <= '1';
+--		elsif(tx_set'event and tx_set = '1') then
+--			tx_rst <= '0';
+--		end if;
+--	end process;
+--	
+--	tx <= tx_set and (not tx_rst);
+	
+	---------------SDA read----------------------------
 --	serial_r: process()
 	
 end structure;
