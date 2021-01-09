@@ -48,6 +48,11 @@ architecture structure of i2c_master_generic is
 	
 	--signals inherent to this implementation
 	signal CLK: std_logic;--used to generate SCL (when scl_en = '1')
+	
+	-- CLK 90 degrees in advance, its rising_edge is used to write on SDA in middle of SCL low
+	signal CLK_90_lead: std_logic;
+	
+	signal CLK_IN_n: std_logic;-- not CLK
 	signal fifo_empty: std_logic;
 	signal bits_sent: natural;--number of bits transmitted
 	signal bits_received: natural;--number of bits received
@@ -69,6 +74,14 @@ begin
 	port map(CLK_IN	=> CLK_IN,
 				RST		=> RST,
 				CLK_OUT	=> CLK
+	);
+	
+	CLK_IN_n <= not CLK_IN;
+	scl_90_clk: prescaler
+	generic map (factor => 2)
+	port map(CLK_IN	=>	CLK_IN_n,
+				RST		=> RST,
+				CLK_OUT	=> CLK_90_lead
 	);
 	
 	process (WREN,CLK,tx_rst,RST)
