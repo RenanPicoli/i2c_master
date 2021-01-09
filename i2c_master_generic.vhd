@@ -58,8 +58,6 @@ architecture structure of i2c_master_generic is
 	signal bits_received: natural;--number of bits received
 	
 	signal scl_en: std_logic;--enables scl to follow CLK
-	signal scl_en_set: std_logic;--sets scl_en
-	signal scl_en_rst: std_logic;--resets scl_en
 	
 begin
 	---------------clock generation----------------------------
@@ -126,29 +124,16 @@ begin
 	SDA <= fifo_sda(N+1);
 	
 	---------------rx flag generation----------------------------
---	process (WREN,CLK,tx_rst,RST)
+--	process(fifo_empty,WREN,RST)
 --	begin
 --		if (RST ='1') then
---			rx_set <= '0';
---		elsif (tx_rst = '1') then
---			rx_set <= '0';
---		elsif(WREN'event and WREN='1') then--moment of start of shifting DR (receiving data from slave)
---			rx_set <= '1';
+--			tx	<= '0';
+--		elsif (fifo_empty='1') then
+--			tx	<= '0';
+--		elsif	(WREN'event and WREN='1') then
+--			tx <= '1';
 --		end if;
 --	end process;
---	
---	process (fifo_empty,CLK,tx_set,RST)
---	begin
---		if (RST ='1') then
---			tx_rst <= '0';
---		elsif(fifo_empty='1') then--moment of start of shifting DR (transmission of address)
---			tx_rst <= '1';
---		elsif(tx_set'event and tx_set = '1') then
---			tx_rst <= '0';
---		end if;
---	end process;
---	
---	tx <= tx_set and (not tx_rst);
 	
 	---------------SDA read----------------------------
 --	serial_r: process()
