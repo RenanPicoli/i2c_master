@@ -30,6 +30,7 @@ signal SCL: std_logic;--open drain clock line
 
 begin
 
+	SDA <= 'H','0' after 60 us;--for slave ack
 	DUT: entity work.i2c_master
 	port map(D 		=> D,
 				CLK	=> CLK,
@@ -65,7 +66,7 @@ begin
 	end process wren_assign;
 	
 	D <= x"0000_0009";--1001
-	ADDR <= x"1A";
+	ADDR <= "0011010" & '0';
 	RST <= '1', '0' after TIME_RST;
 	
 end architecture test;
