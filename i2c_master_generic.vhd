@@ -30,19 +30,23 @@ architecture structure of i2c_master_generic is
 
 	component prescaler
 	generic(factor: integer);
-	port (CLK_IN: in std_logic;--50MHz input
+	port (CLK_IN: in std_logic;--input clock
 			rst: in std_logic;--synchronous reset
 			CLK_OUT: out std_logic--output clock
 	);
 	end component;
 
-	signal fifo_sda: std_logic_vector(N+1 downto 0);--one byte plus start and stop
+	signal fifo_sda: std_logic_vector(N+1 downto 0);--one byte plus start and stop bits
 	
 	--signals representing I2C transfer state
 	signal read_mode: std_logic;-- 1 means reading from slave, 0 means writing on slave.
-	signal tx: std_logic;--flag indicating it is transmitting
+	signal write_mode: std_logic;-- 0 means reading from slave, 1 means writing on slave. Created for ease.
+	signal tx: std_logic;--flag indicating it is transmitting (address or data)
+	signal tx_addr: std_logic;--flag indicating it is transmitting address
+	signal tx_data: std_logic;--flag indicating it is transmitting data
 	signal rx: std_logic;--flag indicating it is receiving
-	signal ack: std_logic;--active HIGH, indicates slave-receiver acknowledged / master receiver acknowledged
+	signal ack: std_logic;--active HIGH, indicates the state when ack should be sent or received
+	signal ack_received: std_logic;--active HIGH, indicates slave-receiver acknowledged
 	signal start: std_logic;-- indicates start bit being transmitted (also applies to repeated start)
 	signal stop: std_logic;-- indicates stop bit being transmitted
 	
@@ -56,10 +60,16 @@ architecture structure of i2c_master_generic is
 	signal fifo_empty: std_logic;
 	signal bits_sent: natural;--number of bits transmitted
 	signal bits_received: natural;--number of bits received
+	signal words_sent: natural;--number of words(bytes) transmitted
+	signal words_received: natural;--number of words(bytes) received
 	
 	signal scl_en: std_logic;--enables scl to follow CLK
 	
 begin
+	read_mode <= ADDR(0);
+	write_mode <= not read_mode;
+	tx <= tx_addr or tx_data;
+	
 	---------------clock generation----------------------------
 	scl_clk: prescaler
 	generic map (factor => 2)
@@ -76,15 +86,53 @@ begin
 				CLK_OUT	=> CLK_90_lead
 	);
 	
-	---------------tx flag generation----------------------------
-	process(fifo_empty,WREN,RST)
+	---------------start flag generation----------------------------
+	process(RST,SDA,SCL)
 	begin
 		if (RST ='1') then
-			tx	<= '0';
-		elsif (fifo_empty='1') then
-			tx	<= '0';
-		elsif	(WREN'event and WREN='1') then
-			tx <= '1';
+			start	<= '0';
+		elsif (SCL='0') then
+			start	<= '0';
+		elsif	(falling_edge(SDA) and SCL='1') then
+			start <= '1';
+		end if;
+	end process;
+	
+	---------------stop flag generation----------------------------
+	process(RST,SDA,SCL,start)
+	begin
+		if (RST ='1') then
+			stop	<= '0';
+		elsif (start='1') then
+			stop	<= '0';
+		elsif	(rising_edge(SDA) and SCL='1') then
+			stop <= '1';
+		end if;
+	end process;
+	
+	---------------tx_addr flag generation----------------------------
+	process(fifo_empty,ack,WREN,RST,write_mode)
+	begin
+		if (RST ='1') then
+			tx_addr	<= '0';
+--		elsif (ack='1') then
+--			tx	<= '0';
+		elsif (ack='1') then
+			tx_addr	<= '0';
+		elsif	(rising_edge(WREN)) then
+			tx_addr <= '1';
+		end if;
+	end process;
+	
+	---------------tx_data flag generation----------------------------
+	process(tx_data,ack,SCL,RST)
+	begin
+		if (RST ='1') then
+			tx_data	<= '0';
+		elsif (tx_data='1' and ack='1' and bits_sent=N) then
+			tx_data	<= '0';
+		elsif	(ack='1' and write_mode='1' and falling_edge(SCL)) then
+			tx_data <= '1';
 		end if;
 	end process;
 	
@@ -103,7 +151,23 @@ begin
 
 	---------------SDA write----------------------------
 	--serial write on SDA bus
-	serial_w: process(tx,CLK_90_lead,WREN,DR,RST)
+	serial_w: process(tx,fifo_sda,WREN,DR,RST,ack,read_mode,write_mode)
+	begin
+		if (RST ='1') then
+			SDA <= '1';
+		elsif (ack = '1' and read_mode='1') then
+			SDA <= '0';--master acknowledges
+		elsif (ack = '1' and write_mode='1') then
+			SDA <= '1';--allows the slave to acknowledge
+		elsif(tx='1')then--SDA is driven using the fifo, which updates at rising_edge of clk_90_lead
+			SDA <= fifo_sda(N+1);
+		end if;
+
+	end process;
+	
+	---------------fifo_sda write-----------------------------
+	----might contain data from sda or from this component----
+	fifo_w: process(RST,WREN,tx,CLK_90_lead,DR)
 	begin
 		if (RST ='1') then
 			fifo_sda <= (others => '1');
@@ -111,29 +175,52 @@ begin
 			bits_sent <= 0;
 		elsif (WREN = '1') then
 			fifo_sda <= '0' & DR & '0';--start bit & DR & stop bit
-		elsif(tx='1' and rising_edge(CLK_90_lead))then--updates fifo at falling edge so it can be read at rising_edge
+		elsif(ack='1') then
+			fifo_empty <= '1';
+			bits_sent <= 0;
+		--updates fifo at rising edge of clk_90_lead so it can be read at rising_edge of SCL
+		elsif(tx='1' and rising_edge(CLK_90_lead))then
 			fifo_sda <= fifo_sda(N downto 0) & '1';--MSB is sent first
-			bits_sent <= bits_sent + 1;
-			if (bits_sent = N+1) then
-				fifo_empty <= '1';
-				bits_sent <= 0;
-			end if;
+			bits_sent <= bits_sent + 1;		
 		end if;
 
 	end process;
-	SDA <= fifo_sda(N+1);
+	
+	---------------ack flag generation----------------------------
+	process(tx,rx,tx_data,bits_sent,bits_received,SCL,SDA,RST)
+	begin
+		if (RST ='1') then
+			ack <= '0';
+		elsif (ack='1' and (tx_data='1' or rx='1')) then--ack state finishes after transmission or receiving starts
+			ack <= '0';
+		elsif	(((tx='1' and bits_sent=N) or (rx='1' and bits_received=N)) and (falling_edge(SCL))) then
+			ack <= '1';
+		end if;
+	end process;
+
+	---------------ack_received flag generation----------------------------
+	process(tx,rx,ack,write_mode,ack_received,bits_sent,bits_received,SCL,SDA,RST)
+	begin
+		if (RST ='1') then
+			ack_received <= '0';
+		elsif (ack_received='1' and SCL='0') then--ack state finishes after SCL goes down again
+			ack_received <= '0';
+		elsif	(ack='1' and write_mode='1' and SDA='0' and (rising_edge(SCL))) then
+			ack_received <= '1';
+		end if;
+	end process;
 	
 	---------------rx flag generation----------------------------
---	process(fifo_empty,WREN,RST)
---	begin
---		if (RST ='1') then
---			tx	<= '0';
---		elsif (fifo_empty='1') then
---			tx	<= '0';
---		elsif	(WREN'event and WREN='1') then
---			tx <= '1';
---		end if;
---	end process;
+	process(rx,ack,read_mode,SCL,RST)
+	begin
+		if (RST ='1') then
+			rx	<= '0';
+		elsif (rx='1' and ack='1') then
+			rx	<= '0';
+		elsif	(ack='1' and read_mode='1' and falling_edge(SCL)) then
+			rx <= '1';
+		end if;
+	end process;
 	
 	---------------SDA read----------------------------
 --	serial_r: process()
