@@ -155,13 +155,17 @@ begin
 	serial_w: process(tx,fifo_sda,WREN,DR,RST,ack,read_mode,write_mode)
 	begin
 		if (RST ='1') then
-			SDA <= '1';
+			SDA <= 'Z';
 		elsif (ack = '1' and read_mode='1') then
 			SDA <= '0';--master acknowledges
 		elsif (ack = '1' and write_mode='1') then
-			SDA <= '1';--allows the slave to acknowledge
+			SDA <= 'Z';--allows the slave to acknowledge
 		elsif(tx='1')then--SDA is driven using the fifo, which updates at rising_edge of clk_90_lead
-			SDA <= fifo_sda(N+1);
+			if (fifo_sda(N+1) = '1') then
+				SDA <= 'Z';
+			else
+				SDA <= '0';
+			end if;
 		end if;
 
 	end process;
@@ -207,8 +211,6 @@ begin
 	begin
 		if (RST ='1') then
 			ack <= '0';
---		elsif ((tx_data='1' or rx='1')) then--ack state finishes after transmission or receiving starts
---			ack <= '0';
 		elsif	(falling_edge(SCL)) then
 			if ((tx='1' and bits_sent=N) or (rx='1' and bits_received=N)) then
 				ack <= '1';
@@ -219,7 +221,7 @@ begin
 	end process;
 
 	---------------ack_received flag generation----------------------------
-	process(tx,rx,ack,write_mode,ack_received,bits_sent,bits_received,SCL,SDA,RST)
+	process(ack,write_mode,ack_received,SCL,SDA,RST)
 	begin
 		if (RST ='1') then
 			ack_received <= '0';

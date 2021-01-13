@@ -60,7 +60,6 @@ architecture structure of i2c_master is
 	
 	constant N: natural := 4;--number of bits in each data written/read
 	signal dr_byte: std_logic_vector(N-1 downto 0);
-	signal sda_logic: std_logic;--1 or 0
 	signal words: std_logic_vector(1 downto 0);--00: 1 word; 01:2 words; 10: 3 words (unused); 11: 4 words
 begin
 
@@ -77,8 +76,7 @@ begin
 				WORDS => words,
 				IACK => IACK,
 				IRQ => IRQ,
-				SDA => sda_logic,
+				SDA => SDA,
 				SCL => SCL
 	);
-	SDA <= 'H' when sda_logic='1' else '0';--simulates pull up
 end structure;
