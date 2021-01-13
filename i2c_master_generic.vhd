@@ -9,7 +9,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 --use ieee.std_logic_unsigned.all;
---use ieee.numeric_std.all;--to_integer
+use ieee.numeric_std.all;--to_integer
 
 entity i2c_master_generic is
 	generic (N: natural);--number of bits in each data written/read
@@ -19,6 +19,7 @@ entity i2c_master_generic is
 			CLK_IN: in std_logic;--clock input, same frequency as SCL, divided by 2 to generate SCL
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write
+			WORDS: in std_logic_vector(1 downto 0);--controls number of words to receive or send
 			IACK: in std_logic;--interrupt acknowledgement
 			IRQ: out std_logic;--interrupt request
 			SDA: inout std_logic;--open drain data line
@@ -125,13 +126,13 @@ begin
 	end process;
 	
 	---------------tx_data flag generation----------------------------
-	process(tx_data,ack,SCL,RST)
+	process(tx_data,ack,write_mode,bits_sent,words_sent,WORDS,SCL,RST)
 	begin
 		if (RST ='1') then
 			tx_data	<= '0';
 		elsif (tx_data='1' and ack='1' and bits_sent=N) then
 			tx_data	<= '0';
-		elsif	(ack='1' and write_mode='1' and falling_edge(SCL)) then
+		elsif	(ack='1' and write_mode='1' and (words_sent/=to_integer(unsigned(WORDS))+1) and falling_edge(SCL)) then
 			tx_data <= '1';
 		end if;
 	end process;
@@ -167,7 +168,7 @@ begin
 	
 	---------------fifo_sda write-----------------------------
 	----might contain data from sda or from this component----
-	fifo_w: process(RST,WREN,tx,CLK_90_lead,DR)
+	fifo_w: process(RST,WREN,tx,ack,CLK_90_lead,DR)
 	begin
 		if (RST ='1') then
 			fifo_sda <= (others => '1');
@@ -186,15 +187,34 @@ begin
 
 	end process;
 	
+	---------------words_sent write-----------------------------
+	process(RST,WREN,tx,tx_data,ack,CLK_90_lead,DR)
+	begin
+		if (RST ='1') then
+			words_sent <= 0;
+		elsif (WREN = '1') then
+			words_sent <= 0;
+		elsif(rising_edge(ack) and tx_data='1')then
+			words_sent <= words_sent + 1;
+			if (words_sent = to_integer(unsigned(WORDS))+1) then
+				words_sent <= 0;
+			end if;
+		end if;
+
+	end process;
 	---------------ack flag generation----------------------------
-	process(tx,rx,tx_data,bits_sent,bits_received,SCL,SDA,RST)
+	process(tx,rx,tx_data,ack,bits_sent,bits_received,SCL,SDA,RST)
 	begin
 		if (RST ='1') then
 			ack <= '0';
-		elsif (ack='1' and (tx_data='1' or rx='1')) then--ack state finishes after transmission or receiving starts
-			ack <= '0';
-		elsif	(((tx='1' and bits_sent=N) or (rx='1' and bits_received=N)) and (falling_edge(SCL))) then
-			ack <= '1';
+--		elsif ((tx_data='1' or rx='1')) then--ack state finishes after transmission or receiving starts
+--			ack <= '0';
+		elsif	(falling_edge(SCL)) then
+			if ((tx='1' and bits_sent=N) or (rx='1' and bits_received=N)) then
+				ack <= '1';
+			else
+				ack <= '0';
+			end if;
 		end if;
 	end process;
 
