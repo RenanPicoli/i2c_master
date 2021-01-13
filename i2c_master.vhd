@@ -50,6 +50,7 @@ architecture structure of i2c_master is
 			CLK_IN: in std_logic;--clock input, same frequency as SCL, divided by 2 to generate SCL
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write
+			WORDS: in std_logic_vector(1 downto 0);--controls number of words to receive or send
 			IACK: in std_logic;--interrupt acknowledgement
 			IRQ: out std_logic;--interrupt request
 			SDA: inout std_logic;--open drain data line
@@ -60,9 +61,11 @@ architecture structure of i2c_master is
 	constant N: natural := 4;--number of bits in each data written/read
 	signal dr_byte: std_logic_vector(N-1 downto 0);
 	signal sda_logic: std_logic;--1 or 0
+	signal words: std_logic_vector(1 downto 0);--00: 1 word; 01:2 words; 10: 3 words (unused); 11: 4 words
 begin
 
 	dr_byte <= D(N-1 downto 0);
+	words <= "01";--TODO: make a register
 	
 	i2c: i2c_master_generic
 	generic map (N => N)
@@ -71,6 +74,7 @@ begin
 				ADDR => ADDR,
 				RST => RST,
 				WREN => WREN,
+				WORDS => words,
 				IACK => IACK,
 				IRQ => IRQ,
 				SDA => sda_logic,
