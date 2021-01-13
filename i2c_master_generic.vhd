@@ -7,7 +7,7 @@
 --------------------------------------------------
 
 library ieee;
-use ieee.std_logic_1164.all;
+use ieee.std_logic_1164.all;--std_logic types, to_x01
 --use ieee.std_logic_unsigned.all;
 use ieee.numeric_std.all;--to_integer
 
@@ -94,20 +94,23 @@ begin
 			start	<= '0';
 		elsif (SCL='0') then
 			start	<= '0';
+		--falling_edge e rising_edge don't need to_x01 because it is already used inside these functions
 		elsif	(falling_edge(SDA) and SCL='1') then
 			start <= '1';
 		end if;
 	end process;
 	
 	---------------stop flag generation----------------------------
-	process(RST,SDA,SCL,start)
+	----------stop flag will be used to drive sda,scl--------------
+	process(RST,ack,SDA,SCL,words_sent,WORDS,clk_90_lead)
 	begin
 		if (RST ='1') then
 			stop	<= '0';
-		elsif (start='1') then
-			stop	<= '0';
-		elsif	(rising_edge(SDA) and SCL='1') then
+		elsif	(ack='0' and words_sent=to_integer(unsigned(WORDS))+1) then
 			stop <= '1';
+			--to_x01 converts 'H','L' to '1','0', respectively. Needed only IN SIMULATION
+		elsif (rising_edge(SDA) and SCL='1') then
+			stop	<= '0';
 		end if;
 	end process;
 	
@@ -116,8 +119,6 @@ begin
 	begin
 		if (RST ='1') then
 			tx_addr	<= '0';
---		elsif (ack='1') then
---			tx	<= '0';
 		elsif (ack='1') then
 			tx_addr	<= '0';
 		elsif	(rising_edge(WREN)) then
@@ -138,11 +139,11 @@ begin
 	end process;
 	
 	---------------SCL generation----------------------------
-	process(bits_sent,SCL,tx,rx,CLK,RST)
+	process(stop,SCL,tx,rx,CLK,RST)
 	begin
 		if (RST ='1') then
 			scl_en	<= '0';
-		elsif (bits_sent = N+1 and SCL = '1') then
+		elsif (stop = '1' and SCL = '1') then
 			scl_en	<= '0';
 		elsif	((tx ='1' or rx ='1') and falling_edge(CLK)) then
 			scl_en <= '1';
@@ -152,7 +153,7 @@ begin
 
 	---------------SDA write----------------------------
 	--serial write on SDA bus
-	serial_w: process(tx,fifo_sda,WREN,DR,RST,ack,read_mode,write_mode)
+	serial_w: process(tx,fifo_sda,WREN,DR,RST,ack,stop,SCL,clk_90_lead,read_mode,write_mode)
 	begin
 		if (RST ='1') then
 			SDA <= 'Z';
@@ -160,6 +161,10 @@ begin
 			SDA <= '0';--master acknowledges
 		elsif (ack = '1' and write_mode='1') then
 			SDA <= 'Z';--allows the slave to acknowledge
+		elsif (stop = '1' and SCL='0') then
+			SDA <= '0';
+		elsif (stop = '1' and SCL='1' and clk_90_lead='0') then
+			SDA <= 'Z';
 		elsif(tx='1')then--SDA is driven using the fifo, which updates at rising_edge of clk_90_lead
 			if (fifo_sda(N+1) = '1') then
 				SDA <= 'Z';
@@ -192,11 +197,13 @@ begin
 	end process;
 	
 	---------------words_sent write-----------------------------
-	process(RST,WREN,tx,tx_data,ack,CLK_90_lead,DR)
+	process(RST,WREN,tx_data,ack,stop)
 	begin
 		if (RST ='1') then
 			words_sent <= 0;
 		elsif (WREN = '1') then
+			words_sent <= 0;
+		elsif (stop = '1') then
 			words_sent <= 0;
 		elsif(rising_edge(ack) and tx_data='1')then
 			words_sent <= words_sent + 1;
@@ -227,7 +234,7 @@ begin
 			ack_received <= '0';
 		elsif (ack_received='1' and SCL='0') then--ack state finishes after SCL goes down again
 			ack_received <= '0';
-		elsif	(ack='1' and write_mode='1' and SDA='0' and (rising_edge(SCL))) then
+		elsif	(ack='1' and write_mode='1' and to_x01(SDA)='0' and (rising_edge(SCL))) then
 			ack_received <= '1';
 		end if;
 	end process;

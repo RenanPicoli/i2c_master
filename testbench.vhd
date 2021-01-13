@@ -29,8 +29,10 @@ signal SDA: std_logic;--open drain data line
 signal SCL: std_logic;--open drain clock line
 
 begin
-
-	SDA <= 'H','0' after 60 us;--for slave ack
+	--all these times are relative to the beginning of simulation
+	--'H' models the pull up resistor in SDA line
+	SDA <= 'H','0' after 60 us,'H' after 170 us;--for slave ack
+	
 	DUT: entity work.i2c_master
 	port map(D 		=> D,
 				CLK	=> CLK,
