@@ -102,11 +102,13 @@ begin
 	
 	---------------stop flag generation----------------------------
 	----------stop flag will be used to drive sda,scl--------------
-	process(RST,ack,SDA,SCL,words_sent,WORDS,clk_90_lead)
+	process(RST,ack,ack_received,SDA,SCL,words_sent,WORDS)
 	begin
 		if (RST ='1') then
 			stop	<= '0';
-		elsif	(ack='0' and words_sent=to_integer(unsigned(WORDS))+1) then
+		elsif	((ack='0' and words_sent=to_integer(unsigned(WORDS))+1))-- or
+				--(ack='1' and ack_received='0' and SCL='0'))
+				then
 			stop <= '1';
 			--to_x01 converts 'H','L' to '1','0', respectively. Needed only IN SIMULATION
 		elsif (rising_edge(SDA) and SCL='1') then
@@ -133,7 +135,7 @@ begin
 			tx_data	<= '0';
 		elsif (tx_data='1' and ack='1' and bits_sent=N) then
 			tx_data	<= '0';
-		elsif	(ack='1' and write_mode='1' and (words_sent/=to_integer(unsigned(WORDS))+1) and falling_edge(SCL)) then
+		elsif	(ack='1' and ack_received='1' and write_mode='1' and (words_sent/=to_integer(unsigned(WORDS))+1) and falling_edge(SCL)) then
 			tx_data <= '1';
 		end if;
 	end process;
