@@ -57,6 +57,7 @@ architecture structure of i2c_master_generic is
 	-- CLK 90 degrees in advance, its rising_edge is used to write on SDA in middle of SCL low
 	signal CLK_90_lead: std_logic;
 	
+	signal ack_finished: std_logic;--active HIGH, indicates the ack was high in previous scl cycle [0 1].
 	signal CLK_IN_n: std_logic;-- not CLK
 	signal fifo_empty: std_logic;
 	signal bits_sent: natural;--number of bits transmitted
@@ -102,15 +103,14 @@ begin
 	
 	---------------stop flag generation----------------------------
 	----------stop flag will be used to drive sda,scl--------------
-	process(RST,ack,ack_received,SDA,SCL,words_sent,WORDS)
+	process(RST,ack,ack_received,ack_finished,SDA,SCL,words_sent,WORDS)
 	begin
 		if (RST ='1') then
 			stop	<= '0';
-		elsif	((ack='0' and words_sent=to_integer(unsigned(WORDS))+1))-- or
-				--(ack='1' and ack_received='0' and SCL='0'))
+		elsif	((ack='0' and words_sent=to_integer(unsigned(WORDS))+1) or
+				(ack='0' and ack_finished='1' and ack_received='0' and SCL='0'))--implicitly samples ack_received at falling_edge of ack
 				then
 			stop <= '1';
-			--to_x01 converts 'H','L' to '1','0', respectively. Needed only IN SIMULATION
 		elsif (rising_edge(SDA) and SCL='1') then
 			stop	<= '0';
 		end if;
@@ -129,7 +129,7 @@ begin
 	end process;
 	
 	---------------tx_data flag generation----------------------------
-	process(tx_data,ack,write_mode,bits_sent,words_sent,WORDS,SCL,RST)
+	process(tx_data,ack,ack_received,write_mode,bits_sent,words_sent,WORDS,SCL,RST)
 	begin
 		if (RST ='1') then
 			tx_data	<= '0';
@@ -215,6 +215,7 @@ begin
 		end if;
 
 	end process;
+	
 	---------------ack flag generation----------------------------
 	process(tx,rx,tx_data,ack,bits_sent,bits_received,SCL,SDA,RST)
 	begin
@@ -234,10 +235,23 @@ begin
 	begin
 		if (RST ='1') then
 			ack_received <= '0';
-		elsif (ack_received='1' and SCL='0') then--ack state finishes after SCL goes down again
-			ack_received <= '0';
-		elsif	(ack='1' and write_mode='1' and to_x01(SDA)='0' and (rising_edge(SCL))) then
-			ack_received <= '1';
+--		elsif (ack_received='1' and SCL='0') then--ack state finishes after SCL goes down again
+--			ack_received <= '0';
+			--to_x01 converts 'H','L' to '1','0', respectively. Needed only IN SIMULATION
+		elsif	(rising_edge(SCL)) then
+			ack_received <= ack and write_mode and not(to_x01(SDA));
+		end if;
+	end process;
+	
+	---------------ack_finished flag generation----------------------------
+	ack_f: process(ack,SCL,SDA,RST)
+	begin
+		if (RST ='1') then
+			ack_finished <= '0';
+		elsif (SCL='1') then
+			ack_finished <= '0';
+		elsif	(falling_edge(SCL)) then
+			ack_finished <= ack;--active HIGH, indicates the ack was high in previous scl cycle [0 1].
 		end if;
 	end process;
 	
