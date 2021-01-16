@@ -3,6 +3,9 @@
 --by Renan Picoli de Souza
 --sends/receives data from SDA bus and drives SCL clock
 --supports only 8 bit sending/receiving
+--Generates IRQs in following events:
+--received NACK
+--transmission ended (STOP)
 -- NO support for clock stretching
 --------------------------------------------------
 
@@ -20,8 +23,7 @@ entity i2c_master_generic is
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write
 			WORDS: in std_logic_vector(1 downto 0);--controls number of words to receive or send
-			IACK: in std_logic;--interrupt acknowledgement
-			IRQ: out std_logic;--interrupt request
+			IRQ: out std_logic_vector(1 downto 0);--interrupt request: 0: successfully transmitted all words; 1: NACK received
 			SDA: inout std_logic;--open drain data line
 			SCL: inout std_logic --open drain clock line
 	);
