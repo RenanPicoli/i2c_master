@@ -287,6 +287,19 @@ begin
 			IRQ(0) <= '1';
 		end if;
 	end process;
+	
+	---------------IRQ NACK---------------------------
+	-------------NACK received------------------------
+	process(RST,IACK,ack,ack_finished,ack_received,SCL)
+	begin
+		if(RST='1') then
+			IRQ(1) <= '0';
+		elsif (IACK(1) ='1') then
+			IRQ(1) <= '0';
+		elsif(ack='0' and ack_finished='1' and ack_received='0' and SCL='0') then
+			IRQ(1) <= '1';
+		end if;
+	end process;
 
 	
 end structure;
