@@ -23,6 +23,7 @@ entity i2c_master_generic is
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write
 			WORDS: in std_logic_vector(1 downto 0);--controls number of words to receive or send
+			IACK: in std_logic_vector(1 downto 0);--interrupt request: 0: successfully transmitted all words; 1: NACK received
 			IRQ: out std_logic_vector(1 downto 0);--interrupt request: 0: successfully transmitted all words; 1: NACK received
 			SDA: inout std_logic;--open drain data line
 			SCL: inout std_logic --open drain clock line
@@ -271,5 +272,21 @@ begin
 	
 	---------------SDA read----------------------------
 --	serial_r: process()
+
+	---------------IRQ BTF----------------------------
+	---------byte transfer finished-------------------
+	----transmitted all words successfully------------
+	process(RST,IACK,stop,write_mode,words_sent,read_mode,words_received,WORDS)
+	begin
+		if(RST='1') then
+			IRQ(0) <= '0';
+		elsif (IACK(0) ='1') then
+			IRQ(0) <= '0';
+		elsif(rising_edge(stop) and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
+			IRQ(0) <= '1';
+		end if;
+	end process;
+
 	
 end structure;

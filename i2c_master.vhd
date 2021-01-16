@@ -51,6 +51,7 @@ architecture structure of i2c_master is
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write
 			WORDS: in std_logic_vector(1 downto 0);--controls number of words to receive or send
+			IACK: in std_logic_vector(1 downto 0);--interrupt request: 0: successfully transmitted all words; 1: NACK received
 			IRQ: out std_logic_vector(1 downto 0);--interrupt request: 0: successfully transmitted all words; 1: NACK received
 			SDA: inout std_logic;--open drain data line
 			SCL: inout std_logic --open drain clock line
@@ -95,6 +96,7 @@ begin
 				RST => RST,
 				WREN => WREN,
 				WORDS => words,
+				IACK => all_i2c_iack,
 				IRQ => all_i2c_irq,
 				SDA => SDA,
 				SCL => SCL
