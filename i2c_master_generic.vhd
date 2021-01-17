@@ -40,7 +40,8 @@ architecture structure of i2c_master_generic is
 	);
 	end component;
 
-	signal fifo_sda: std_logic_vector(N+1 downto 0);--one byte plus start and stop bits
+	signal fifo_sda_out: std_logic_vector(N+1 downto 0);--data to write on SDA: one byte plus start and stop bits
+	signal fifo_sda_in: std_logic_vector(N+1 downto 0);-- data read from SDA: one byte plus start and stop bits
 	
 	--signals representing I2C transfer state
 	signal read_mode: std_logic;-- 1 means reading from slave, 0 means writing on slave.
@@ -110,7 +111,8 @@ begin
 	begin
 		if (RST ='1') then
 			stop	<= '0';
-		elsif	((ack='0' and words_sent=to_integer(unsigned(WORDS))+1) or
+		elsif	((ack='0' and write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+				 (ack='0' and read_mode='1' and words_received=to_integer(unsigned(WORDS))+1) or
 				(ack='0' and ack_finished='1' and ack_received='0' and SCL='0'))--implicitly samples ack_received at falling_edge of ack
 				then
 			stop <= '1';
@@ -158,7 +160,7 @@ begin
 
 	---------------SDA write----------------------------
 	--serial write on SDA bus
-	serial_w: process(tx,fifo_sda,WREN,DR,RST,ack,stop,SCL,clk_90_lead,read_mode,write_mode)
+	serial_w: process(tx,fifo_sda_out,WREN,DR,RST,ack,stop,SCL,clk_90_lead,read_mode,write_mode)
 	begin
 		if (RST ='1') then
 			SDA <= 'Z';
@@ -171,7 +173,7 @@ begin
 		elsif (stop = '1' and SCL='1' and clk_90_lead='0') then
 			SDA <= 'Z';
 		elsif(tx='1')then--SDA is driven using the fifo, which updates at rising_edge of clk_90_lead
-			if (fifo_sda(N+1) = '1') then
+			if (fifo_sda_out(N+1) = '1') then
 				SDA <= 'Z';
 			else
 				SDA <= '0';
@@ -180,23 +182,57 @@ begin
 
 	end process;
 	
-	---------------fifo_sda write-----------------------------
+	---------------fifo_sda_out write-----------------------------
 	----might contain data from sda or from this component----
-	fifo_w: process(RST,WREN,tx,ack,CLK_90_lead,DR)
+	fifo_w: process(RST,WREN,tx,rx,ack,CLK_90_lead,DR)
 	begin
 		if (RST ='1') then
-			fifo_sda <= (others => '1');
+			fifo_sda_out <= (others => '1');
 			fifo_empty <= '0';
 			bits_sent <= 0;
 		elsif (WREN = '1') then
-			fifo_sda <= '0' & DR & '0';--start bit & DR & stop bit
+			fifo_sda_out <= '0' & DR & '0';--start bit & DR & stop bit
 		elsif(ack='1') then
 			fifo_empty <= '1';
 			bits_sent <= 0;
 		--updates fifo at rising edge of clk_90_lead so it can be read at rising_edge of SCL
 		elsif(tx='1' and rising_edge(CLK_90_lead))then
-			fifo_sda <= fifo_sda(N downto 0) & '1';--MSB is sent first
-			bits_sent <= bits_sent + 1;		
+			fifo_sda_out <= fifo_sda_out(N downto 0) & '1';--MSB is sent first
+			bits_sent <= bits_sent + 1;
+		end if;
+
+	end process;
+	
+	---------------fifo_sda_in write-----------------------------
+	---------------data read from bus----------------------------
+	serial_r: process(RST,ack,rx,CLK_90_lead,SDA)
+	begin
+		if (RST ='1') then
+			bits_received <= 0;
+			fifo_sda_in <= (others => '1');
+		elsif(ack='1') then
+			bits_received <= 0;
+		--updates data received in falling edge because data is stable when SCL=1
+		elsif (rx='1' and falling_edge(CLK_90_lead)) then
+			bits_received <= bits_received + 1;
+			fifo_sda_in <= fifo_sda_in(N downto 0) & to_x01(SDA);
+		end if;
+	end process;
+	
+	---------------words_received write-----------------------------
+	process(RST,WREN,rx,ack,stop)
+	begin
+		if (RST ='1') then
+			words_received <= 0;
+		elsif (WREN = '1') then
+			words_received <= 0;
+		elsif (stop = '1') then
+			words_received <= 0;
+		elsif(rising_edge(ack) and rx='1')then
+			words_received <= words_received + 1;
+			if (words_received = to_integer(unsigned(WORDS))+1) then
+				words_received <= 0;
+			end if;
 		end if;
 
 	end process;
@@ -238,11 +274,9 @@ begin
 	begin
 		if (RST ='1') then
 			ack_received <= '0';
---		elsif (ack_received='1' and SCL='0') then--ack state finishes after SCL goes down again
---			ack_received <= '0';
 			--to_x01 converts 'H','L' to '1','0', respectively. Needed only IN SIMULATION
 		elsif	(rising_edge(SCL)) then
-			ack_received <= ack and write_mode and not(to_x01(SDA));
+			ack_received <= ack and not(to_x01(SDA));
 		end if;
 	end process;
 	
@@ -265,7 +299,7 @@ begin
 			rx	<= '0';
 		elsif (rx='1' and ack='1') then
 			rx	<= '0';
-		elsif	(ack='1' and read_mode='1' and falling_edge(SCL)) then
+		elsif	(ack='1' and read_mode='1' and (words_received/=to_integer(unsigned(WORDS))+1) and falling_edge(SCL)) then
 			rx <= '1';
 		end if;
 	end process;

@@ -68,7 +68,7 @@ begin
 	end process wren_assign;
 	
 	D <= x"0000_0009";--1001
-	ADDR <= "0011010" & '0';
+	ADDR <= "0011010" & '1';
 	RST <= '1', '0' after TIME_RST;
 	
 end architecture test;
