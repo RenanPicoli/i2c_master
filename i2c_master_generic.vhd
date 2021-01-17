@@ -41,7 +41,7 @@ architecture structure of i2c_master_generic is
 	end component;
 
 	signal fifo_sda_out: std_logic_vector(N+1 downto 0);--data to write on SDA: one byte plus start and stop bits
-	signal fifo_sda_in: std_logic_vector(N+1 downto 0);-- data read from SDA: one byte plus start and stop bits
+	signal fifo_sda_in: std_logic_vector(N-1 downto 0);-- data read from SDA: one byte plus start and stop bits
 	
 	--signals representing I2C transfer state
 	signal read_mode: std_logic;-- 1 means reading from slave, 0 means writing on slave.
@@ -207,7 +207,7 @@ begin
 	
 	---------------fifo_sda_in write-----------------------------
 	---------------data read from bus----------------------------
-	serial_r: process(RST,ack,rx,CLK_90_lead,SDA)
+	serial_r: process(RST,ack,rx,SCL,SDA)
 	begin
 		if (RST ='1') then
 			bits_received <= 0;
@@ -215,9 +215,9 @@ begin
 		elsif(ack='1') then
 			bits_received <= 0;
 		--updates data received in falling edge because data is stable when SCL=1
-		elsif (rx='1' and falling_edge(CLK_90_lead)) then
+		elsif (rx='1' and rising_edge(SCL)) then
 			bits_received <= bits_received + 1;
-			fifo_sda_in <= fifo_sda_in(N downto 0) & to_x01(SDA);
+			fifo_sda_in <= fifo_sda_in(N-2 downto 0) & to_x01(SDA);
 		end if;
 	end process;
 	
