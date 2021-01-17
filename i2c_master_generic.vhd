@@ -52,6 +52,7 @@ architecture structure of i2c_master_generic is
 	signal rx: std_logic;--flag indicating it is receiving
 	signal ack: std_logic;--active HIGH, indicates the state when ack should be sent or received
 	signal ack_received: std_logic;--active HIGH, indicates slave-receiver acknowledged
+	signal ack_addr_received: std_logic;--active HIGH, indicates slave-receiver acknowledged
 	signal start: std_logic;-- indicates start bit being transmitted (also applies to repeated start)
 	signal stop: std_logic;-- indicates stop bit being transmitted
 	
@@ -113,7 +114,8 @@ begin
 			stop	<= '0';
 		elsif	((ack='0' and write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
 				 (ack='0' and read_mode='1' and words_received=to_integer(unsigned(WORDS))+1) or
-				(ack='0' and ack_finished='1' and ack_received='0' and SCL='0'))--implicitly samples ack_received at falling_edge of ack
+				(ack='0' and ack_finished='1' and ack_received='0' and SCL='0' and
+				not(read_mode='1' and ack_addr_received='1')))--implicitly samples ack_received at falling_edge of ack
 				then
 			stop <= '1';
 		elsif (rising_edge(SDA) and SCL='1') then
@@ -276,7 +278,7 @@ begin
 			ack_received <= '0';
 			--to_x01 converts 'H','L' to '1','0', respectively. Needed only IN SIMULATION
 		elsif	(rising_edge(SCL)) then
-			ack_received <= ack and not(to_x01(SDA));
+			ack_received <= ack and not(to_x01(SDA)) and not(read_mode and ack_addr_received);
 		end if;
 	end process;
 	
@@ -289,6 +291,19 @@ begin
 			ack_finished <= '0';
 		elsif	(falling_edge(SCL)) then
 			ack_finished <= ack;--active HIGH, indicates the ack was high in previous scl cycle [0 1].
+		end if;
+	end process;
+	
+	---------------ack_addr_received flag generation------------------------
+	process(RST,stop,ack_received)
+	begin
+		if (RST ='1') then
+			ack_addr_received <= '0';
+		elsif (stop='1') then
+			ack_addr_received <= '0';
+		--to_x01 converts 'H','L' to '1','0', respectively. Needed only IN SIMULATION
+		elsif	(rising_edge(ack_received)) then
+			ack_addr_received <= '1';
 		end if;
 	end process;
 	
