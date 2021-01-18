@@ -42,12 +42,23 @@ architecture structure of i2c_master is
 	);
 	end component;
 	
+	component d_flip_flop
+		port (D:	in std_logic_vector(31 downto 0);
+				rst:	in std_logic;--synchronous reset
+				ENA:	in std_logic:='1';--enables writes
+				CLK:in std_logic;
+				Q:	out std_logic_vector(31 downto 0)  
+				);
+	end component;
+	
 	component i2c_master_generic
 	generic (N: natural);--number of bits in each data written/read
 	port (
-			DR: in std_logic_vector(N-1 downto 0);--to store data to be transmitted or received
+			DR_out: in std_logic_vector(31 downto 0);--data to be transmitted
+			DR_in: out std_logic_vector(31 downto 0);--data received
+			DR_wren: out std_logic;--DR write enable (register ENA)
 			ADDR: in std_logic_vector(7 downto 0);--address offset of registers relative to peripheral base address
-			CLK_IN: in std_logic;--clock input, same frequency as SCL, divided by 2 to generate SCL
+			CLK_IN: in std_logic;--clock input, divided by 2 to generate SCL
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write
 			WORDS: in std_logic_vector(1 downto 0);--controls number of words to receive or send
@@ -83,6 +94,10 @@ architecture structure of i2c_master is
 	signal irq_ctrl_Q: std_logic_vector(31 downto 0);
 	signal irq_ctrl_rden: std_logic;-- not used, just to keep form
 	signal irq_ctrl_wren: std_logic;
+	
+	signal DR_out: std_logic_vector(31 downto 0):=x"0000_0009";--data to be transmitted
+	signal DR_in:  std_logic_vector(31 downto 0);--data received
+	signal DR_wren:std_logic;
 begin
 
 	dr_byte <= D(N-1 downto 0);
@@ -90,7 +105,9 @@ begin
 	
 	i2c: i2c_master_generic
 	generic map (N => N)
-	port map(DR => dr_byte,
+	port map(DR_out => DR_out,
+				DR_in  => DR_in,
+				DR_wren=> DR_wren,
 				CLK_IN => CLK,
 				ADDR => ADDR,
 				RST => RST,
@@ -115,4 +132,12 @@ begin
 				IACK_OUT => all_i2c_iack,
 				output => irq_ctrl_Q
 	);
+	
+	--data register: transmited or received
+	DR: d_flip_flop port map(D => DR_in,
+									RST=> RST,--resets all previous history of input signal
+									CLK=> CLK,--sampling clock
+									ENA=> DR_wren--,
+--									Q=> DR_out
+									);
 end structure;

@@ -17,9 +17,11 @@ use ieee.numeric_std.all;--to_integer
 entity i2c_master_generic is
 	generic (N: natural);--number of bits in each data written/read
 	port (
-			DR: in std_logic_vector(N-1 downto 0);--to store data to be transmitted or received
+			DR_out: in std_logic_vector(31 downto 0);--data to be transmitted
+			DR_in: out std_logic_vector(31 downto 0);--data received
+			DR_wren: out std_logic;--DR write enable (register ENA)
 			ADDR: in std_logic_vector(7 downto 0);--address offset of registers relative to peripheral base address
-			CLK_IN: in std_logic;--clock input, same frequency as SCL, divided by 2 to generate SCL
+			CLK_IN: in std_logic;--clock input, divided by 2 to generate SCL
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write
 			WORDS: in std_logic_vector(1 downto 0);--controls number of words to receive or send
@@ -108,7 +110,7 @@ begin
 	
 	---------------stop flag generation----------------------------
 	----------stop flag will be used to drive sda,scl--------------
-	process(RST,ack,ack_received,ack_finished,SDA,SCL,words_sent,WORDS)
+	process(RST,ack,write_mode,read_mode,ack_received,ack_addr_received,ack_finished,SDA,SCL,words_sent,words_received,WORDS)
 	begin
 		if (RST ='1') then
 			stop	<= '0';
@@ -162,7 +164,7 @@ begin
 
 	---------------SDA write----------------------------
 	--serial write on SDA bus
-	serial_w: process(tx,fifo_sda_out,WREN,DR,RST,ack,stop,SCL,clk_90_lead,read_mode,write_mode)
+	serial_w: process(tx,fifo_sda_out,RST,ack,stop,SCL,clk_90_lead,read_mode,write_mode)
 	begin
 		if (RST ='1') then
 			SDA <= 'Z';
@@ -186,14 +188,14 @@ begin
 	
 	---------------fifo_sda_out write-----------------------------
 	----might contain data from sda or from this component----
-	fifo_w: process(RST,WREN,tx,rx,ack,CLK_90_lead,DR)
+	fifo_w: process(RST,WREN,tx,rx,ack,CLK_90_lead,DR_out)
 	begin
 		if (RST ='1') then
 			fifo_sda_out <= (others => '1');
 			fifo_empty <= '0';
 			bits_sent <= 0;
 		elsif (WREN = '1') then
-			fifo_sda_out <= '0' & DR & '0';--start bit & DR & stop bit
+			fifo_sda_out <= '0' & DR_out(N-1 downto 0) & '0';--start bit & DR_out(N-1 downto 0) & stop bit
 		elsif(ack='1') then
 			fifo_empty <= '1';
 			bits_sent <= 0;
@@ -214,10 +216,24 @@ begin
 			fifo_sda_in <= (others => '1');
 		elsif(ack='1') then
 			bits_received <= 0;
+			DR_in <= (31 downto N =>'0') & fifo_sda_in;
 		--updates data received in falling edge because data is stable when SCL=1
 		elsif (rx='1' and rising_edge(SCL)) then
 			bits_received <= bits_received + 1;
 			fifo_sda_in <= fifo_sda_in(N-2 downto 0) & to_x01(SDA);
+		end if;
+	end process;
+	
+	----------------------DR_wren write-----------------------------
+	-----this complex timing ensures DR_wren to be '1' at only one positive edge of CLK_IN
+	process(RST,ack,clk_90_lead)
+	begin
+		if (RST ='1') then
+			DR_wren<='0';
+		elsif(ack='1' and clk_90_lead='1') then
+			DR_wren<='1';
+		elsif (falling_edge(clk_90_lead)) then
+			DR_wren <= '0';
 		end if;
 	end process;
 	
@@ -308,7 +324,7 @@ begin
 	end process;
 	
 	---------------rx flag generation----------------------------
-	process(rx,ack,read_mode,SCL,RST)
+	process(rx,ack,read_mode,words_received,WORDS,SCL,RST)
 	begin
 		if (RST ='1') then
 			rx	<= '0';
