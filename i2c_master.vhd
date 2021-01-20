@@ -98,6 +98,9 @@ architecture structure of i2c_master is
 	signal DR_out: std_logic_vector(31 downto 0):=x"0000_0009";--data to be transmitted
 	signal DR_in:  std_logic_vector(31 downto 0);--data received
 	signal DR_wren:std_logic;
+	
+	signal CR_Q: std_logic_vector(31 downto 0);--data to be transmitted
+	signal CR_wren:std_logic;
 begin
 
 	dr_byte <= D(N-1 downto 0);
@@ -133,11 +136,19 @@ begin
 				output => irq_ctrl_Q
 	);
 	
-	--data register: transmited or received
+	--data register: data to be transmited or received, or address
 	DR: d_flip_flop port map(D => DR_in,
 									RST=> RST,--resets all previous history of input signal
 									CLK=> CLK,--sampling clock
 									ENA=> DR_wren--,
 --									Q=> DR_out
+									);
+	
+	--control register: bits 9:8 WORDS - 1; bits 7:1 slave address; bit 0: read (0) or write (1)
+	CR: d_flip_flop port map(D => D,
+									RST=> RST,--resets all previous history of input signal
+									CLK=> CLK,--sampling clock
+									ENA=> CR_wren,
+									Q=> CR_Q
 									);
 end structure;
