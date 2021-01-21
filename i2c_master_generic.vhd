@@ -191,23 +191,33 @@ begin
 	
 	---------------fifo_sda_out write-----------------------------
 	----might contain data from sda or from this component----
-	fifo_w: process(RST,WREN,tx,rx,ack,CLK_90_lead,DR_out)
+	fifo_w: process(RST,WREN,tx,tx_data,rx,ack,ack_received,CLK_90_lead,DR_out)
 	begin
 		if (RST ='1') then
 			fifo_sda_out <= (others => '1');
 			fifo_empty <= '0';
-			bits_sent <= 0;
 		elsif (WREN = '1') then
-			fifo_sda_out <= '0' & DR_out(N-1 downto 0) & '0';--start bit & DR_out(N-1 downto 0) & stop bit
+			fifo_sda_out <= '0' & ADDR(N-1 downto 0) & '0';--start bit & ADDR(N-1 downto 0) & stop bit
+		elsif (tx_data = '1' and ack_received = '1') then
+			fifo_sda_out <= DR_out(N-1 downto 0) & "11";--DR_out(N-1 downto 0) & dummy bits
 		elsif(ack='1') then
 			fifo_empty <= '1';
-			bits_sent <= 0;
 		--updates fifo at rising edge of clk_90_lead so it can be read at rising_edge of SCL
 		elsif(tx='1' and rising_edge(CLK_90_lead))then
 			fifo_sda_out <= fifo_sda_out(N downto 0) & '1';--MSB is sent first
-			bits_sent <= bits_sent + 1;
 		end if;
 
+	end process;
+	
+	bits_sent_w: process(RST,ack,tx,SCL)
+	begin
+		if (RST ='1') then
+			bits_sent <= 0;
+		elsif(ack='1') then
+			bits_sent <= 0;
+		elsif(tx='1' and rising_edge(SCL))then
+			bits_sent <= bits_sent + 1;
+		end if;
 	end process;
 	
 	---------------fifo_sda_in write-----------------------------
