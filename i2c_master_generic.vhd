@@ -191,7 +191,7 @@ begin
 	
 	---------------fifo_sda_out write-----------------------------
 	----might contain data from sda or from this component----
-	fifo_w: process(RST,WREN,tx,tx_data,rx,ack,ack_received,CLK_90_lead,DR_out)
+	fifo_w: process(RST,WREN,tx,tx_data,rx,ack,ack_received,CLK_90_lead,DR_out,ADDR)
 	begin
 		if (RST ='1') then
 			fifo_sda_out <= (others => '1');
@@ -225,15 +225,24 @@ begin
 	serial_r: process(RST,ack,rx,fifo_sda_in,SCL,SDA)
 	begin
 		if (RST ='1') then
-			bits_received <= 0;
 			fifo_sda_in <= (others => '1');
 		elsif(ack='1') then
-			bits_received <= 0;
 			DR_in <= (31 downto N =>'0') & fifo_sda_in;
 		--updates data received in falling edge because data is stable when SCL=1
 		elsif (rx='1' and rising_edge(SCL)) then
-			bits_received <= bits_received + 1;
 			fifo_sda_in <= fifo_sda_in(N-2 downto 0) & to_x01(SDA);
+		end if;
+	end process;
+	
+		
+	bits_received_w: process(RST,ack,rx,SCL)
+	begin
+		if (RST ='1') then
+			bits_received <= 0;
+		elsif(ack='1') then
+			bits_received <= 0;
+		elsif(rx='1' and rising_edge(SCL))then
+			bits_received <= bits_received + 1;
 		end if;
 	end process;
 	
