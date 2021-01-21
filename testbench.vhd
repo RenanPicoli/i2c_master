@@ -31,7 +31,8 @@ signal SCL: std_logic;--open drain clock line
 begin
 	--all these times are relative to the beginning of simulation
 	--'H' models the pull up resistor in SDA line
-	SDA <= 'H','0' after 60 us,'H' after 170 us;--for slave ack
+	SDA <= 'H','0' after 60 us,'H' after 67.5 us,
+				'0' after 110 us, 'H' after 117.5 us, '0' after 160 us, 'H' after 167.5 us;--for slave ack
 	
 	DUT: entity work.i2c_master
 	port map(D 		=> D,
@@ -68,7 +69,7 @@ begin
 	end process wren_assign;
 	
 	D <= x"0000_0009";--1001
-	ADDR <= "0011010" & '0';--LSB 1 read mode; LSB 0 write mode
+	ADDR <= "0000101" & '0';--LSB 1 read mode; LSB 0 write mode
 	RST <= '1', '0' after TIME_RST;
 	
 end architecture test;
