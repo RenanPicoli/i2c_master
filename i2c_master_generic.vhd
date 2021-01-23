@@ -191,7 +191,7 @@ begin
 	
 	---------------fifo_sda_out write-----------------------------
 	----might contain data from sda or from this component----
-	fifo_w: process(RST,WREN,tx,tx_data,rx,ack,ack_received,CLK_90_lead,DR_out,ADDR)
+	fifo_w: process(RST,WREN,tx,tx_data,rx,ack,ack_received,CLK_90_lead,DR_out,ADDR,WORDS,words_sent)
 	begin
 		if (RST ='1') then
 			fifo_sda_out <= (others => '1');
@@ -199,7 +199,9 @@ begin
 		elsif (WREN = '1') then
 			fifo_sda_out <= '0' & ADDR(N-1 downto 0) & '0';--start bit & ADDR(N-1 downto 0) & stop bit
 		elsif (tx_data = '1' and ack_received = '1') then
-			fifo_sda_out <= DR_out(N-1 downto 0) & "11";--DR_out(N-1 downto 0) & dummy bits
+			--DR_out(...) & dummy bits
+			fifo_sda_out <= DR_out(N-1+N*(to_integer(unsigned(WORDS))-words_sent)
+									downto 0+N*(to_integer(unsigned(WORDS))-words_sent)) & "11";
 		elsif(ack='1') then
 			fifo_empty <= '1';
 		--updates fifo at rising edge of clk_90_lead so it can be read at rising_edge of SCL

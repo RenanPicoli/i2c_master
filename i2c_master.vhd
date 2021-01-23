@@ -95,7 +95,7 @@ architecture structure of i2c_master is
 	signal irq_ctrl_rden: std_logic;-- not used, just to keep form
 	signal irq_ctrl_wren: std_logic;
 	
-	signal DR_out: std_logic_vector(31 downto 0):=x"0000_0009";--data to be transmitted
+	signal DR_out: std_logic_vector(31 downto 0):=x"0000_0095";--data to be transmitted: 1001 0101
 	signal DR_in:  std_logic_vector(31 downto 0);--data received
 	signal DR_wren:std_logic;
 	
