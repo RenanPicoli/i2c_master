@@ -86,7 +86,6 @@ architecture structure of i2c_master is
 	end component;
 	
 	constant N: natural := 4;--number of bits in each data written/read
-	signal dr_byte: std_logic_vector(N-1 downto 0);
 	signal words: std_logic_vector(1 downto 0);--00: 1 word; 01:2 words; 10: 3 words (unused); 11: 4 words
 	signal all_i2c_irq: std_logic_vector(1 downto 0);--0: successfully transmitted all words; 1: NACK received
 	signal all_i2c_iack: std_logic_vector(1 downto 0);--0: successfully transmitted all words; 1: NACK received
@@ -101,9 +100,12 @@ architecture structure of i2c_master is
 	
 	signal CR_Q: std_logic_vector(31 downto 0);--data to be transmitted
 	signal CR_wren:std_logic;
+	
+	signal all_registers_output: array32 (2 downto 0);
+	signal all_periphs_rden: std_logic_vector(2 downto 0);
+	signal address_decoder_wren: std_logic_vector(2 downto 0);
 begin
 
-	dr_byte <= D(N-1 downto 0);
 	words <= "01";--TODO: make a register
 	
 	i2c: i2c_master_generic
@@ -122,6 +124,7 @@ begin
 				SCL => SCL
 	);
 	
+	irq_ctrl_wren <= address_decoder_wren(2);
 	irq_ctrl: interrupt_controller
 	generic map (L => 2)
 	port map(D => D,
@@ -140,15 +143,31 @@ begin
 	DR: d_flip_flop port map(D => DR_in,
 									RST=> RST,--resets all previous history of input signal
 									CLK=> CLK,--sampling clock
-									ENA=> DR_wren--,
---									Q=> DR_out
+									ENA=> DR_wren,
+									Q=> DR_out
 									);
 	
 	--control register: bits 9:8 WORDS - 1; bits 7:1 slave address; bit 0: read (0) or write (1)
+	CR_wren <= address_decoder_wren(0);
 	CR: d_flip_flop port map(D => D,
 									RST=> RST,--resets all previous history of input signal
 									CLK=> CLK,--sampling clock
 									ENA=> CR_wren,
 									Q=> CR_Q
 									);
+
+-------------------------- address decoder ---------------------------------------------------
+	--addr 00: CR
+	--addr 01: DR
+	--addr 10: irq_ctrl (interrupts pending)
+	all_registers_output <= (0=> CR_Q,1=> DR_out,2=> irq_ctrl_Q);
+	decoder: address_decoder_register_map
+	generic map(N => 2)
+	port map(ADDR => ADDR(1 downto 0),
+				RDEN => RDEN,
+				WREN => WREN,
+				data_in => all_registers_output,
+				WREN_OUT => address_decoder_wren,
+				data_out => Q
+	);
 end structure;
