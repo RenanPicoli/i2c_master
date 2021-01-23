@@ -6,7 +6,7 @@
 --Generates IRQs in following events:
 --received NACK
 --transmission ended (STOP)
--- NO support for clock stretching
+--NO support for clock stretching
 --------------------------------------------------
 
 library ieee;
@@ -18,13 +18,13 @@ entity i2c_master_generic is
 	generic (N: natural);--number of bits in each data written/read
 	port (
 			DR_out: in std_logic_vector(31 downto 0);--data to be transmitted
-			DR_in: out std_logic_vector(31 downto 0);--data received
-			DR_wren: out std_logic;--DR write enable (register ENA)
+			DR_in_shift: out std_logic_vector(31 downto 0);--data received, will be shifted into DR
+			DR_shift: out std_logic;--DR must shift left N bits to make room for new word
 			ADDR: in std_logic_vector(7 downto 0);--address offset of registers relative to peripheral base address
 			CLK_IN: in std_logic;--clock input, divided by 2 to generate SCL
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write
-			WORDS: in std_logic_vector(1 downto 0);--controls number of words to receive or send
+			WORDS: in std_logic_vector(1 downto 0);--controls number of words to receive or send (MSByte	first, MSB first)
 			IACK: in std_logic_vector(1 downto 0);--interrupt request: 0: successfully transmitted all words; 1: NACK received
 			IRQ: out std_logic_vector(1 downto 0);--interrupt request: 0: successfully transmitted all words; 1: NACK received
 			SDA: inout std_logic;--open drain data line
@@ -229,7 +229,7 @@ begin
 		if (RST ='1') then
 			fifo_sda_in <= (others => '1');
 		elsif(ack='1') then
-			DR_in <= (31 downto N =>'0') & fifo_sda_in;
+			DR_in_shift <= (31 downto N =>'0') & fifo_sda_in;
 		--updates data received in falling edge because data is stable when SCL=1
 		elsif (rx='1' and rising_edge(SCL)) then
 			fifo_sda_in <= fifo_sda_in(N-2 downto 0) & to_x01(SDA);
@@ -248,16 +248,16 @@ begin
 		end if;
 	end process;
 	
-	----------------------DR_wren write-----------------------------
-	-----this complex timing ensures DR_wren to be '1' at only one positive edge of CLK_IN
-	process(RST,ack_data,clk_90_lead)
+	----------------------DR_shift write-----------------------------
+	-----this complex timing ensures DR_shift to be '1' at only one positive edge of CLK_IN
+	process(RST,ack_data,clk_90_lead,read_mode)
 	begin
 		if (RST ='1') then
-			DR_wren<='0';
-		elsif(ack_data='1' and clk_90_lead='1') then
-			DR_wren<='1';
+			DR_shift<='0';
+		elsif(ack_data='1' and clk_90_lead='1' and read_mode='1') then
+			DR_shift<='1';
 		elsif (falling_edge(clk_90_lead)) then
-			DR_wren <= '0';
+			DR_shift <= '0';
 		end if;
 	end process;
 	
@@ -312,6 +312,8 @@ begin
 	end process;
 	
 	---------------ack_data flag generation----------------------
+	--ack data phase: master or slave should acknowledge, depending on ADDR(0)
+	--a single N-bit word was received or sent-------------------
 	process(rx,tx_data,bits_sent,bits_received,SCL,RST)
 	begin
 		if (RST ='1') then

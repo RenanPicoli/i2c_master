@@ -55,8 +55,8 @@ architecture structure of i2c_master is
 	generic (N: natural);--number of bits in each data written/read
 	port (
 			DR_out: in std_logic_vector(31 downto 0);--data to be transmitted
-			DR_in: out std_logic_vector(31 downto 0);--data received
-			DR_wren: out std_logic;--DR write enable (register ENA)
+			DR_in_shift: out std_logic_vector(31 downto 0);--data received, will be shifted into DR
+			DR_shift: out std_logic;--DR must shift left N bits to make room for new word
 			ADDR: in std_logic_vector(7 downto 0);--address offset of registers relative to peripheral base address
 			CLK_IN: in std_logic;--clock input, divided by 2 to generate SCL
 			RST: in std_logic;--reset
@@ -86,6 +86,7 @@ architecture structure of i2c_master is
 	end component;
 	
 	constant N: natural := 4;--number of bits in each data written/read
+	signal read_mode: std_logic;
 	signal words: std_logic_vector(1 downto 0);--00: 1 word; 01:2 words; 10: 3 words (unused); 11: 4 words
 	signal all_i2c_irq: std_logic_vector(1 downto 0);--0: successfully transmitted all words; 1: NACK received
 	signal all_i2c_iack: std_logic_vector(1 downto 0);--0: successfully transmitted all words; 1: NACK received
@@ -95,8 +96,11 @@ architecture structure of i2c_master is
 	signal irq_ctrl_wren: std_logic;
 	
 	signal DR_out: std_logic_vector(31 downto 0):=x"0000_0095";--data to be transmitted: 1001 0101
-	signal DR_in:  std_logic_vector(31 downto 0);--data received
-	signal DR_wren:std_logic;
+	signal DR_in:  std_logic_vector(31 downto 0);--data that will be written to DR
+	signal DR_in_shift:  std_logic_vector(31 downto 0);--data received from I2C bus
+	signal DR_shift:std_logic;--enables write value from I2C generic component (received from I2C bus)
+	signal DR_wren:std_logic;--enables write value from D port
+	signal DR_ena:std_logic;--DR ENA (enables DR write)
 	
 	signal CR_Q: std_logic_vector(31 downto 0);--data to be transmitted
 	signal CR_wren:std_logic;
@@ -107,12 +111,13 @@ architecture structure of i2c_master is
 begin
 
 	words <= "01";--TODO: make a register
+	read_mode <= ADDR(0);
 	
 	i2c: i2c_master_generic
 	generic map (N => N)
 	port map(DR_out => DR_out,
-				DR_in  => DR_in,
-				DR_wren=> DR_wren,
+				DR_in_shift  => DR_in_shift,
+				DR_shift=> DR_shift,
 				CLK_IN => CLK,
 				ADDR => ADDR,
 				RST => RST,
@@ -140,14 +145,22 @@ begin
 	);
 	
 	--data register: data to be transmited or received, or address
+	DR_wren <= address_decoder_wren(1);
+	DR_ena <= 	DR_shift when read_mode='1' else
+					DR_wren;
+	DR_in <= DR_out(31-N downto 0) & DR_in_shift(N-1 downto 0) when read_mode='1' else-- read mode (master receiver after address acknowledgement)
+				D;-- write mode (master transmitter)
+	
 	DR: d_flip_flop port map(D => DR_in,
 									RST=> RST,--resets all previous history of input signal
 									CLK=> CLK,--sampling clock
-									ENA=> DR_wren,
+									ENA=> DR_ena,
 									Q=> DR_out
 									);
 	
-	--control register: bits 9:8 WORDS - 1; bits 7:1 slave address; bit 0: read (0) or write (1)
+	--control register: bits 9:8 WORDS - 1 (MSByte first, MSB first);
+	--bits 7:1 slave address;
+	--bit 0: read (0) or write (1)
 	CR_wren <= address_decoder_wren(0);
 	CR: d_flip_flop port map(D => D,
 									RST=> RST,--resets all previous history of input signal
