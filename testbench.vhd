@@ -31,11 +31,14 @@ signal SCL: std_logic;--open drain clock line
 
 signal read_mode: std_logic;
 signal write_mode: std_logic;
+constant RW_bit: std_logic:='1';-- 1 read mode; 0 write mode
 begin
 	--all these times are relative to the beginning of simulation
 	--'H' models the pull up resistor in SDA line
 	SDA <= 'H','0' after 60 us,'H' after 67.5 us,
-				'0' after 110 us, 'H' after 117.5 us, '0' after 160 us, 'H' after 167.5 us;--slave ack for writes
+				'0' after 110 us, 'H' after 117.5 us, '0' after 160 us, 'H' after 167.5 us when write_mode='1' else--slave ack for writes
+				'H','0' after 60 us,'H' after 67.5 us, '0' after 80 us, 'H' after 90 us, '0' after 120 us, 'H' after 167.5 us when read_mode='1' else--master will read F0 from slave
+				'X';
 	
 	DUT: entity work.i2c_master
 	port map(D 		=> D,
@@ -60,41 +63,29 @@ begin
 		wait for 2.5 us;
 	end process clock;
 	
---	wren_assign: process
---	begin
---		WREN <= '0';
---		wait for (TIME_RST + 5 us);
---		
---		WREN <= '1';
---		wait for 5 us;
---		
---		WREN <= '0';
---		wait;
---	end process wren_assign;
-	
 	--I2C registers configuration
+	read_mode <= RW_bit;
+	write_mode <= not read_mode;
 	setup:process
 	begin
 		--zeroes & WORDS & SLV ADDR & R/W(1 read mode; 0 write mode)
-		D <= (31 downto 10 =>'0') & "01" & "0000101" & '0';--WORDS: 01; ADDR: 1010
-		read_mode <= D(0);
-		write_mode <= not read_mode;
+		D <= (31 downto 10 =>'0') & "01" & "0000101" & RW_bit;--WORDS: 01; ADDR: 1010
 		ADDR <= "00";--CR address
 		WREN <= '1';
 		I2C_EN <= '0';
-		wait for TIME_RST + 5 us;
+		wait for TIME_RST + TIME_DELTA;
 		
 		--bits 7:0 data to be transmitted
 		D <= x"0000_0095";-- 1001 0101
 		ADDR <= "01";--DR address		
 		WREN <= '1';
-		wait for 5 us;
+		wait for TIME_DELTA;
 
 		D<=(others=>'0');
 		ADDR<="11";--invalid address
 		WREN <= '0';
 		I2C_EN <= '1';
-		wait for 5 us;
+		wait for TIME_DELTA;
 		
 		I2C_EN <= '0';
 		wait;
