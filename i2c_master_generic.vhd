@@ -68,7 +68,6 @@ architecture structure of i2c_master_generic is
 	
 	signal ack_finished: std_logic;--active HIGH, indicates the ack was high in previous scl cycle [0 1].
 	signal CLK_IN_n: std_logic;-- not CLK
-	signal fifo_empty: std_logic;
 	signal bits_sent: natural;--number of bits transmitted
 	signal bits_received: natural;--number of bits received
 	signal words_sent: natural;--number of words(bytes) transmitted
@@ -129,7 +128,7 @@ begin
 	end process;
 	
 	---------------tx_addr flag generation----------------------------
-	process(fifo_empty,ack,I2C_EN,RST,write_mode)
+	process(ack,I2C_EN,RST,write_mode)
 	begin
 		if (RST ='1') then
 			tx_addr	<= '0';
@@ -201,15 +200,12 @@ begin
 	begin
 		if (RST ='1') then
 			fifo_sda_out <= (others => '1');
-			fifo_empty <= '0';
 		elsif (I2C_EN = '1') then
 			fifo_sda_out <= '0' & ADDR(N-1 downto 0) & '0';--start bit & ADDR(N-1 downto 0) & stop bit
 		elsif (tx_data = '1' and ack_received = '1') then
 			--DR_out(...) & dummy bits
 			fifo_sda_out <= DR_out(N-1+N*(to_integer(unsigned(WORDS))-words_sent)
 									downto 0+N*(to_integer(unsigned(WORDS))-words_sent)) & "11";
-		elsif(ack='1') then
-			fifo_empty <= '1';
 		--updates fifo at rising edge of clk_90_lead so it can be read at rising_edge of SCL
 		elsif(tx='1' and rising_edge(CLK_90_lead))then
 			fifo_sda_out <= fifo_sda_out(N downto 0) & '1';--MSB is sent first
