@@ -20,7 +20,7 @@ entity i2c_master_generic is
 			DR_out: in std_logic_vector(31 downto 0);--data to be transmitted
 			DR_in_shift: out std_logic_vector(31 downto 0);--data received, will be shifted into DR
 			DR_shift: out std_logic;--DR must shift left N bits to make room for new word
-			ADDR: in std_logic_vector(7 downto 0);--address offset of registers relative to peripheral base address
+			ADDR: in std_logic_vector(7 downto 0);--slave address
 			CLK_IN: in std_logic;--clock input, divided by 2 to generate SCL
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write

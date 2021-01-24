@@ -15,7 +15,7 @@ use work.my_types.all;--array32
 entity i2c_master is
 	port (
 			D: in std_logic_vector(31 downto 0);--for register write
-			ADDR: in std_logic_vector(7 downto 0);--address offset of registers relative to peripheral base address
+			ADDR: in std_logic_vector(1 downto 0);--address offset of registers relative to peripheral base address
 			CLK: in std_logic;--for register read/write, also used to generate SCL
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write
@@ -57,7 +57,7 @@ architecture structure of i2c_master is
 			DR_out: in std_logic_vector(31 downto 0);--data to be transmitted
 			DR_in_shift: out std_logic_vector(31 downto 0);--data received, will be shifted into DR
 			DR_shift: out std_logic;--DR must shift left N bits to make room for new word
-			ADDR: in std_logic_vector(7 downto 0);--address offset of registers relative to peripheral base address
+			ADDR: in std_logic_vector(7 downto 0);--slave address
 			CLK_IN: in std_logic;--clock input, divided by 2 to generate SCL
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write
@@ -95,7 +95,7 @@ architecture structure of i2c_master is
 	signal irq_ctrl_rden: std_logic;-- not used, just to keep form
 	signal irq_ctrl_wren: std_logic;
 	
-	signal DR_out: std_logic_vector(31 downto 0):=x"0000_0095";--data to be transmitted: 1001 0101
+	signal DR_out: std_logic_vector(31 downto 0);--data transmitted/received
 	signal DR_in:  std_logic_vector(31 downto 0);--data that will be written to DR
 	signal DR_in_shift:  std_logic_vector(31 downto 0);--data received from I2C bus
 	signal DR_shift:std_logic;--enables write value from I2C generic component (received from I2C bus)
@@ -111,7 +111,7 @@ architecture structure of i2c_master is
 begin
 
 	words <= "01";--TODO: make a register
-	read_mode <= ADDR(0);
+	read_mode <= CR_Q(0);
 	
 	i2c: i2c_master_generic
 	generic map (N => N)
@@ -119,10 +119,10 @@ begin
 				DR_in_shift  => DR_in_shift,
 				DR_shift=> DR_shift,
 				CLK_IN => CLK,
-				ADDR => ADDR,
+				ADDR => CR_Q(7 downto 0),
 				RST => RST,
 				WREN => WREN,
-				WORDS => words,
+				WORDS => CR_Q(9 downto 8),
 				IACK => all_i2c_iack,
 				IRQ => all_i2c_irq,
 				SDA => SDA,
@@ -130,6 +130,7 @@ begin
 	);
 	
 	irq_ctrl_wren <= address_decoder_wren(2);
+	irq_ctrl_rden <= '1';--not necessary, just to keep form
 	irq_ctrl: interrupt_controller
 	generic map (L => 2)
 	port map(D => D,
@@ -176,7 +177,7 @@ begin
 	all_registers_output <= (0=> CR_Q,1=> DR_out,2=> irq_ctrl_Q);
 	decoder: address_decoder_register_map
 	generic map(N => 2)
-	port map(ADDR => ADDR(1 downto 0),
+	port map(ADDR => ADDR,
 				RDEN => RDEN,
 				WREN => WREN,
 				data_in => all_registers_output,
