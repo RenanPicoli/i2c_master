@@ -20,6 +20,7 @@ entity i2c_master is
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write
 			RDEN: in std_logic;--enables register read
+			I2C_EN: in std_logic;--enables transfer to start
 			IACK: in std_logic;--interrupt acknowledgement
 			Q: out std_logic_vector(31 downto 0);--for register read
 			IRQ: out std_logic;--interrupt request
@@ -60,7 +61,7 @@ architecture structure of i2c_master is
 			ADDR: in std_logic_vector(7 downto 0);--slave address
 			CLK_IN: in std_logic;--clock input, divided by 2 to generate SCL
 			RST: in std_logic;--reset
-			WREN: in std_logic;--enables register write
+			I2C_EN: in std_logic;--enables transfer to start
 			WORDS: in std_logic_vector(1 downto 0);--controls number of words to receive or send
 			IACK: in std_logic_vector(1 downto 0);--interrupt request: 0: successfully transmitted all words; 1: NACK received
 			IRQ: out std_logic_vector(1 downto 0);--interrupt request: 0: successfully transmitted all words; 1: NACK received
@@ -110,7 +111,6 @@ architecture structure of i2c_master is
 	signal address_decoder_wren: std_logic_vector(2 downto 0);
 begin
 
-	words <= "01";--TODO: make a register
 	read_mode <= CR_Q(0);
 	
 	i2c: i2c_master_generic
@@ -121,7 +121,7 @@ begin
 				CLK_IN => CLK,
 				ADDR => CR_Q(7 downto 0),
 				RST => RST,
-				WREN => WREN,
+				I2C_EN => I2C_EN,
 				WORDS => CR_Q(9 downto 8),
 				IACK => all_i2c_iack,
 				IRQ => all_i2c_irq,

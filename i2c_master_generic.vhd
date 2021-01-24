@@ -23,7 +23,7 @@ entity i2c_master_generic is
 			ADDR: in std_logic_vector(7 downto 0);--slave address
 			CLK_IN: in std_logic;--clock input, divided by 2 to generate SCL
 			RST: in std_logic;--reset
-			WREN: in std_logic;--enables register write
+			I2C_EN: in std_logic;--enables transfer to start
 			WORDS: in std_logic_vector(1 downto 0);--controls number of words to receive or send (MSByte	first, MSB first)
 			IACK: in std_logic_vector(1 downto 0);--interrupt request: 0: successfully transmitted all words; 1: NACK received
 			IRQ: out std_logic_vector(1 downto 0);--interrupt request: 0: successfully transmitted all words; 1: NACK received
@@ -129,13 +129,13 @@ begin
 	end process;
 	
 	---------------tx_addr flag generation----------------------------
-	process(fifo_empty,ack,WREN,RST,write_mode)
+	process(fifo_empty,ack,I2C_EN,RST,write_mode)
 	begin
 		if (RST ='1') then
 			tx_addr	<= '0';
 		elsif (ack='1') then
 			tx_addr	<= '0';
-		elsif	(rising_edge(WREN)) then
+		elsif	(rising_edge(I2C_EN)) then
 			tx_addr <= '1';
 		end if;
 	end process;
@@ -191,12 +191,12 @@ begin
 	
 	---------------fifo_sda_out write-----------------------------
 	----might contain data from sda or from this component----
-	fifo_w: process(RST,WREN,tx,tx_data,rx,ack,ack_received,CLK_90_lead,DR_out,ADDR,WORDS,words_sent)
+	fifo_w: process(RST,I2C_EN,tx,tx_data,rx,ack,ack_received,CLK_90_lead,DR_out,ADDR,WORDS,words_sent)
 	begin
 		if (RST ='1') then
 			fifo_sda_out <= (others => '1');
 			fifo_empty <= '0';
-		elsif (WREN = '1') then
+		elsif (I2C_EN = '1') then
 			fifo_sda_out <= '0' & ADDR(N-1 downto 0) & '0';--start bit & ADDR(N-1 downto 0) & stop bit
 		elsif (tx_data = '1' and ack_received = '1') then
 			--DR_out(...) & dummy bits
@@ -262,11 +262,11 @@ begin
 	end process;
 	
 	---------------words_received write-----------------------------
-	process(RST,WREN,rx,ack_data,stop)
+	process(RST,I2C_EN,rx,ack_data,stop)
 	begin
 		if (RST ='1') then
 			words_received <= 0;
-		elsif (WREN = '1') then
+		elsif (I2C_EN = '1') then
 			words_received <= 0;
 		elsif (stop = '1') then
 			words_received <= 0;
@@ -280,11 +280,11 @@ begin
 	end process;
 	
 	---------------words_sent write-----------------------------
-	process(RST,WREN,tx_data,ack,stop)
+	process(RST,I2C_EN,tx_data,ack,stop)
 	begin
 		if (RST ='1') then
 			words_sent <= 0;
-		elsif (WREN = '1') then
+		elsif (I2C_EN = '1') then
 			words_sent <= 0;
 		elsif (stop = '1') then
 			words_sent <= 0;
