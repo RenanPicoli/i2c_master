@@ -18,7 +18,7 @@ entity i2c_master_generic is
 	generic (N: natural);--number of bits in each data written/read
 	port (
 			DR_out: in std_logic_vector(31 downto 0);--data to be transmitted
-			DR_in_shift: out std_logic_vector(31 downto 0);--data received, will be shifted into DR
+			DR_in_shift: buffer std_logic_vector(31 downto 0);--data received, will be shifted into DR
 			DR_shift: out std_logic;--DR must shift left N bits to make room for new word
 			ADDR: in std_logic_vector(7 downto 0);--slave address
 			CLK_IN: in std_logic;--clock input, divided by 2 to generate SCL
@@ -167,7 +167,7 @@ begin
 
 	---------------SDA write----------------------------
 	--serial write on SDA bus
-	serial_w: process(tx,fifo_sda_out,RST,ack,stop,SCL,clk_90_lead,read_mode,write_mode)
+	serial_w: process(tx,rx,fifo_sda_out,RST,ack,stop,SCL,clk_90_lead,read_mode,write_mode)
 	begin
 		if (RST ='1') then
 			SDA <= 'Z';
@@ -179,12 +179,18 @@ begin
 			SDA <= '0';
 		elsif (stop = '1' and SCL='1' and clk_90_lead='0') then
 			SDA <= 'Z';
+		elsif (stop='1') then
+			SDA <= '0';
+		elsif(rx='1')then
+			SDA <= 'Z';--releases the bus when reading, so slave can drive it
 		elsif(tx='1')then--SDA is driven using the fifo, which updates at rising_edge of clk_90_lead
 			if (fifo_sda_out(N+1) = '1') then
 				SDA <= 'Z';
 			else
 				SDA <= '0';
 			end if;
+		else--statement to remove latch
+			SDA <= 'Z';--releases bus
 		end if;
 
 	end process;
@@ -228,14 +234,20 @@ begin
 	begin
 		if (RST ='1') then
 			fifo_sda_in <= (others => '1');
-		elsif(ack='1') then
-			DR_in_shift <= (31 downto N =>'0') & fifo_sda_in;
 		--updates data received in falling edge because data is stable when SCL=1
 		elsif (rx='1' and rising_edge(SCL)) then
 			fifo_sda_in <= fifo_sda_in(N-2 downto 0) & to_x01(SDA);
 		end if;
 	end process;
 	
+	process(RST,ack_data,fifo_sda_in,DR_in_shift)
+	begin
+		if (RST ='1') then
+			DR_in_shift <= (others=>'0');
+		elsif(rising_edge(ack_data)) then
+			DR_in_shift <= (31 downto N =>'0') & fifo_sda_in;
+		end if;
+	end process;
 		
 	bits_received_w: process(RST,ack,rx,SCL)
 	begin
@@ -395,13 +407,14 @@ begin
 	
 	---------------IRQ NACK---------------------------
 	-------------NACK received------------------------
-	process(RST,IACK,ack,ack_finished,ack_received,SCL)
+	process(RST,IACK,ack,ack_finished,ack_received,read_mode,ack_addr_received,stop,SCL)
 	begin
 		if(RST='1') then
 			IRQ(1) <= '0';
 		elsif (IACK(1) ='1') then
 			IRQ(1) <= '0';
-		elsif(ack='0' and ack_finished='1' and ack_received='0' and SCL='0') then
+		elsif(ack='0' and ack_finished='1' and ack_received='0' and not(read_mode='1' and ack_addr_received='1')
+					and not(stop='1') and SCL='0') then
 			IRQ(1) <= '1';
 		end if;
 	end process;
