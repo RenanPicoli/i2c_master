@@ -54,6 +54,8 @@ set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_RO
 set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
 set_global_assignment -name EDA_SIMULATION_TOOL "ModelSim-Altera (VHDL)"
 set_global_assignment -name EDA_OUTPUT_DATA_FORMAT VHDL -section_id eda_simulation
+set_global_assignment -name VHDL_FILE i2c_slave_generic.vhd
+set_global_assignment -name VHDL_FILE i2c_slave.vhd
 set_global_assignment -name VHDL_FILE d_flip_flop.vhd
 set_global_assignment -name VHDL_FILE interrupt_controller.vhd
 set_global_assignment -name VHDL_FILE prescaler.vhd

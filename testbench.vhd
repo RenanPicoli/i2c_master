@@ -16,6 +16,22 @@ constant TIME_DELTA : time := 5 us;
 --reset duration must be long enough to be perceived by the slowest clock (filter clock, both polarities)
 constant TIME_RST : time := 5 us;
 
+component i2c_slave
+	port (
+			D: in std_logic_vector(31 downto 0);--for register write
+			ADDR: in std_logic_vector(1 downto 0);--address offset of registers relative to peripheral base address
+			CLK: in std_logic;--for register read/write, also used to generate SCL
+			RST: in std_logic;--reset
+			WREN: in std_logic;--enables register write
+			RDEN: in std_logic;--enables register read
+			IACK: in std_logic;--interrupt acknowledgement
+			Q: out std_logic_vector(31 downto 0);--for register read
+			IRQ: out std_logic;--interrupt request
+			SDA: inout std_logic;--open drain data line
+			SCL: inout std_logic --open drain clock line
+	);
+end component;
+
 signal D: std_logic_vector(31 downto 0);--for register write
 signal CLK: std_logic;--for register read/write, also used to generate SCL
 signal ADDR: std_logic_vector(1 downto 0);--address offset of registers relative to peripheral base address
@@ -48,6 +64,20 @@ begin
 				WREN	=> WREN,
 				RDEN	=>	RDEN,
 				I2C_EN=> I2C_EN,
+				IACK	=> IACK,
+				Q		=>	Q,
+				IRQ	=>	IRQ,
+				SDA	=>	SDA,
+				SCL	=>	SCL
+	);
+	
+	slave: i2c_slave
+	port map(D 		=> D,
+				CLK	=> CLK,
+				ADDR 	=> ADDR,
+				RST	=>	RST,
+				WREN	=> WREN,
+				RDEN	=>	RDEN,
 				IACK	=> IACK,
 				Q		=>	Q,
 				IRQ	=>	IRQ,
