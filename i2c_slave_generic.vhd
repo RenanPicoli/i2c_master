@@ -210,22 +210,20 @@ begin
 	
 	---------------fifo_sda_out write-----------------------------
 	----might contain data from sda or from this component----
---	fifo_w: process(RST,start,tx,rx_data,tx,ack,ack_sent,CLK_90_lead,DR_out,ADDR,WORDS,words_sent)
---	begin
---		if (RST ='1') then
---			fifo_sda_out <= (others => '1');
---		elsif (start = '1') then
---			fifo_sda_out <= '0' & ADDR(N-1 downto 0) & '0';--start bit & ADDR(N-1 downto 0) & stop bit
---		elsif (rx_data = '1' and ack_sent = '1') then
---			--DR_out(...) & dummy bits
---			fifo_sda_out <= DR_out(N-1+N*(to_integer(unsigned(WORDS))-words_sent)
---									downto 0+N*(to_integer(unsigned(WORDS))-words_sent)) & "11";
---		--updates fifo at rising edge of clk_90_lead so it can be read at rising_edge of SCL
---		elsif(tx='1' and rising_edge(CLK_90_lead))then
---			fifo_sda_out <= fifo_sda_out(N downto 0) & '1';--MSB is sent first
---		end if;
---
---	end process;
+	fifo_w: process(RST,start,tx,ack_sent,CLK_90_lead,DR_out,WORDS,words_sent)
+	begin
+		if (RST ='1') then
+			fifo_sda_out <= (others => '1');
+		elsif (tx = '1' and ack_sent = '1') then
+			--DR_out(...) & dummy bits
+			fifo_sda_out <= DR_out(N-1+N*(to_integer(unsigned(WORDS))-words_sent)
+									downto 0+N*(to_integer(unsigned(WORDS))-words_sent)) & "11";
+		--updates fifo at rising edge of clk_90_lead so it can be read at rising_edge of SCL
+		elsif(tx='1' and rising_edge(CLK_90_lead))then
+			fifo_sda_out <= fifo_sda_out(N downto 0) & '1';--MSB is sent first
+		end if;
+
+	end process;
 	
 	bits_sent_w: process(RST,ack,tx,SCL)
 	begin
@@ -240,12 +238,12 @@ begin
 	
 	---------------fifo_sda_in write-----------------------------
 	---------------data read from bus----------------------------
-	serial_r: process(RST,ack,tx,fifo_sda_in,SCL,SDA)
+	serial_r: process(RST,ack,rx,fifo_sda_in,SCL,SDA)
 	begin
 		if (RST ='1') then
 			fifo_sda_in <= (others => '1');
 		--updates data received in falling edge because data is stable when SCL=1
-		elsif (tx='1' and rising_edge(SCL)) then
+		elsif (rx='1' and rising_edge(SCL)) then
 			fifo_sda_in <= fifo_sda_in(N-2 downto 0) & to_x01(SDA);
 		end if;
 	end process;
