@@ -55,7 +55,7 @@ architecture structure of i2c_slave_generic is
 	signal ack: std_logic;--active HIGH, indicates the state when ack should be sent or received
 	signal ack_addr: std_logic;--active HIGH, indicates the state when ack of address should be received
 	signal ack_data: std_logic;--active HIGH, indicates the state when ack of word (byte) should be sent or received
-	signal ack_sent: std_logic;--active HIGH, indicates slave-receiver acknowledged
+	signal ack_received: std_logic;--active HIGH, indicates master-receiver acknowledged
 	signal ack_addr_sent: std_logic;--active HIGH, indicates slave-receiver acknowledged
 	signal start: std_logic;-- indicates start bit being received (also applies to repeated start)
 	signal stop: std_logic;-- indicates stop bit being received
@@ -111,7 +111,7 @@ begin
 	
 	---------------stop flag generation----------------------------
 	----------stop flag will be used to drive sda,scl--------------
-	process	(RST,ack,write_mode,read_mode,ack_sent,ack_addr_sent,ack_finished,
+	process	(RST,ack,write_mode,read_mode,ack_received,ack_addr_sent,ack_finished,
 				SDA,SCL,clk_90_lead,words_sent,words_received,WORDS,OADDR,address_received)
 	begin
 		if (RST ='1') then
@@ -119,8 +119,8 @@ begin
 		elsif	((ack='0' and write_mode='1' and words_received=to_integer(unsigned(WORDS))+1) or
 				 (ack='0' and read_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
 				 (rx_addr='1' and bits_received=N and SCL='0' and address_received(N-1 downto 1) /= OADDR(N-1 downto 1)) or
-				(ack='0' and ack_finished='1' and ack_sent='0' and SCL='0' and
-				not(read_mode='1' and ack_addr_sent='1')))--implicitly samples ack_sent at falling_edge of ack
+				(ack='0' and ack_finished='1' and ack_received='0' and SCL='0' and
+				not(read_mode='1' and ack_addr_sent='1')))--implicitly samples ack_received at falling_edge of ack
 				then
 			stop <= '1';
 		elsif (rising_edge(SDA) and SCL='1') then
@@ -141,13 +141,13 @@ begin
 	end process;
 	
 	---------------rx_data flag generation----------------------------
-	process(rx_data,ack,ack_sent,write_mode,bits_received,words_received,WORDS,SCL,RST,stop)
+	process(rx_data,ack,write_mode,bits_received,words_received,WORDS,SCL,RST,stop)
 	begin
 		if (RST ='1' or stop='1') then
 			rx_data	<= '0';
 		elsif (rx_data='1' and ack='1' and bits_received=N) then
 			rx_data	<= '0';
-		elsif	(ack='1' and ack_sent='1' and write_mode='1' and (words_received/=to_integer(unsigned(WORDS))+1) and falling_edge(SCL)) then
+		elsif	(ack='1' and write_mode='1' and (words_received/=to_integer(unsigned(WORDS))+1) and falling_edge(SCL)) then
 			rx_data <= '1';
 		end if;
 	end process;
@@ -214,11 +214,11 @@ begin
 	
 	---------------fifo_sda_out write-----------------------------
 	----might contain data from sda or from this component----
-	fifo_w: process(RST,stop,start,tx,ack_sent,CLK_90_lead,DR_out,WORDS,words_sent)
+	fifo_w: process(RST,stop,start,tx,ack_received,ack_addr_sent,ack_finished,CLK_90_lead,DR_out,WORDS,words_sent)
 	begin
 		if (RST ='1' or stop='1') then
 			fifo_sda_out <= (others => '1');
-		elsif (tx = '1' and ack_sent = '1') then
+		elsif (tx = '1' and (ack_addr_sent = '1' and ack_finished='1')) then
 			--DR_out(...) & dummy bits
 			fifo_sda_out <= DR_out(N-1+N*(to_integer(unsigned(WORDS))-words_sent)
 									downto 0+N*(to_integer(unsigned(WORDS))-words_sent)) & "11";
@@ -362,14 +362,14 @@ begin
 		end if;
 	end process;
 
-	---------------ack_sent flag generation----------------------------
-	process(ack,write_mode,ack_sent,SCL,SDA,RST,stop)
+	---------------ack_received flag generation----------------------------
+	process(ack_data,write_mode,ack_received,SCL,SDA,RST,stop)
 	begin
 		if (RST ='1' or stop='1') then
-			ack_sent <= '0';
+			ack_received <= '0';
 			--to_x01 converts 'H','L' to '1','0', respectively. Needed only IN SIMULATION
 		elsif	(rising_edge(SCL)) then
-			ack_sent <= ack and not(to_x01(SDA)) and not(read_mode and ack_addr_sent);
+			ack_received <= ack_data and not(to_x01(SDA)) and not(write_mode);
 		end if;
 	end process;
 	
@@ -386,14 +386,14 @@ begin
 	end process;
 	
 	---------------ack_addr_sent flag generation------------------------
-	process(RST,stop,ack_sent)
+	process(RST,stop,ack)
 	begin
 		if (RST ='1') then
 			ack_addr_sent <= '0';
 		elsif (stop='1') then
 			ack_addr_sent <= '0';
 		--to_x01 converts 'H','L' to '1','0', respectively. Needed only IN SIMULATION
-		elsif	(rising_edge(ack_sent)) then
+		elsif	(rising_edge(ack)) then
 			ack_addr_sent <= '1';
 		end if;
 	end process;
@@ -430,13 +430,13 @@ begin
 	
 	---------------IRQ NACK---------------------------
 	-------------NACK received------------------------
-	process(RST,IACK,ack,ack_finished,ack_sent,read_mode,ack_addr_sent,stop,SCL)
+	process(RST,IACK,ack,ack_finished,ack_received,read_mode,ack_addr_sent,stop,SCL)
 	begin
 		if(RST='1') then
 			IRQ(1) <= '0';
 		elsif (IACK(1) ='1') then
 			IRQ(1) <= '0';
-		elsif(ack='0' and ack_finished='1' and ack_sent='0' and not(write_mode='1' and ack_addr_sent='1')
+		elsif(ack='0' and ack_finished='1' and ack_received='0' and not(write_mode='1' and ack_addr_sent='1')
 					and not(stop='1') and SCL='0') then
 			IRQ(1) <= '1';
 		end if;
