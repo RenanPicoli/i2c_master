@@ -58,6 +58,7 @@ architecture structure of i2c_slave is
 			DR_in_shift: out std_logic_vector(31 downto 0);--data received, will be shifted into DR
 			DR_shift: out std_logic;--DR must shift left N bits to make room for new word
 			OADDR: in std_logic_vector(7 downto 1);--slave own address
+			mode: out std_logic_vector(1 downto 0);--read_mode: bit 0; write_mode: bit 1
 			CLK_IN: in std_logic;--clock input, divided by 2 to generate SCL
 			RST: in std_logic;--reset
 			WORDS: in std_logic_vector(1 downto 0);--controls number of words to receive or send
@@ -86,6 +87,7 @@ architecture structure of i2c_slave is
 	
 	constant N: natural := 4;--number of bits in each data written/read
 	signal read_mode: std_logic;
+	signal write_mode: std_logic;
 	signal words: std_logic_vector(1 downto 0);--00: 1 word; 01:2 words; 10: 3 words (unused); 11: 4 words
 	signal all_i2c_irq: std_logic_vector(1 downto 0);--0: successfully transmitted all words; 1: NACK received
 	signal all_i2c_iack: std_logic_vector(1 downto 0);--0: successfully transmitted all words; 1: NACK received
@@ -101,15 +103,21 @@ architecture structure of i2c_slave is
 	signal DR_wren:std_logic;--enables write value from D port
 	signal DR_ena:std_logic;--DR ENA (enables DR write)
 	
-	signal CR_Q: std_logic_vector(31 downto 0);--data to be transmitted
+	signal CR_Q: std_logic_vector(31 downto 0);--CR output
 	signal CR_wren:std_logic;
 	
-	signal all_registers_output: array32 (2 downto 0);
-	signal all_periphs_rden: std_logic_vector(2 downto 0);
-	signal address_decoder_wren: std_logic_vector(2 downto 0);
+	signal SR_mode: std_logic_vector(1 downto 0);--read_mode: bit 0; write_mode: bit 1
+	signal SR_D: std_logic_vector(31 downto 0);--SR data intput
+	signal SR_Q: std_logic_vector(31 downto 0);--SR output
+	signal SR_wren:std_logic;
+	
+	signal all_registers_output: array32 (3 downto 0);
+	signal all_periphs_rden: std_logic_vector(3 downto 0);
+	signal address_decoder_wren: std_logic_vector(3 downto 0);
 begin
 
-	read_mode <= CR_Q(0);
+	read_mode <= SR_Q(0);
+	write_mode <= SR_Q(1);
 	
 	i2c: i2c_slave_generic
 	generic map (N => N)
@@ -118,6 +126,7 @@ begin
 				DR_shift=> DR_shift,
 				CLK_IN => CLK,
 				OADDR => CR_Q(7 downto 1),
+				mode	=> SR_mode,
 				RST => RST,
 				WORDS => CR_Q(9 downto 8),
 				IACK => all_i2c_iack,
@@ -144,9 +153,9 @@ begin
 	
 	--data register: data to be transmited or received, or address
 	DR_wren <= address_decoder_wren(1);
-	DR_ena <= 	DR_shift when read_mode='0' else
+	DR_ena <= 	DR_shift when write_mode='1' else
 					DR_wren;
-	DR_in <= DR_out(31-N downto 0) & DR_in_shift(N-1 downto 0) when read_mode='0' else-- read mode (master receiver after address acknowledgement)
+	DR_in <= DR_out(31-N downto 0) & DR_in_shift(N-1 downto 0) when write_mode='1' else-- read mode (master receiver after address acknowledgement)
 				D;-- write mode (master transmitter)
 	
 	DR: d_flip_flop port map(D => DR_in,
@@ -158,7 +167,7 @@ begin
 	
 	--control register: bits 9:8 WORDS - 1 (MSByte first, MSB first);
 	--bits 7:1 slave address;
-	--bit 0: read (0) or write (1)
+	--bit 0: unused
 	CR_wren <= address_decoder_wren(0);
 	CR: d_flip_flop port map(D => D,
 									RST=> RST,--resets all previous history of input signal
@@ -166,12 +175,25 @@ begin
 									ENA=> CR_wren,
 									Q=> CR_Q
 									);
+									
+	--status register: read-only register
+	--bit 0: read
+	--bit 1: write
+	SR_wren <= '1';
+	SR_D <= (31 downto 2 => '0') & SR_mode;
+	SR: d_flip_flop port map(D => SR_D,
+									RST=> RST,--resets all previous history of input signal
+									CLK=> CLK,--sampling clock
+									ENA=> SR_wren,
+									Q=> SR_Q
+									);
 
 -------------------------- address decoder ---------------------------------------------------
 	--addr 00: CR
 	--addr 01: DR
 	--addr 10: irq_ctrl (interrupts pending)
-	all_registers_output <= (0=> CR_Q,1=> DR_out,2=> irq_ctrl_Q);
+	--addr 11: SR (status register: read-only)
+	all_registers_output <= (0=> CR_Q,1=> DR_out,2=> irq_ctrl_Q,3=>SR_Q);
 	decoder: address_decoder_register_map
 	generic map(N => 2)
 	port map(ADDR => ADDR,

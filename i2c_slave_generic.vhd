@@ -21,6 +21,7 @@ entity i2c_slave_generic is
 			DR_in_shift: buffer std_logic_vector(31 downto 0);--data received, will be shifted into DR
 			DR_shift: out std_logic;--DR must shift left N bits to make room for new word
 			OADDR: in std_logic_vector(7 downto 1);--slave own address
+			mode: out std_logic_vector(1 downto 0);--read_mode: bit 0; write_mode: bit 1
 			CLK_IN: in std_logic;--clock input, must be at least 2x the frequency of SCL
 			RST: in std_logic;--reset
 			WORDS: in std_logic_vector(1 downto 0);--controls number of words to receive or send (MSByte	first, MSB first)
@@ -165,6 +166,7 @@ begin
 			write_mode <= not to_x01(SDA);
 		end if;
 	end process;
+	mode <= write_mode & read_mode;
 	
 	---------------SCL generation----------------------------
 	process(stop,SCL,tx,tx,CLK,RST)
@@ -286,7 +288,7 @@ begin
 	begin
 		if (RST ='1' or stop='1') then
 			DR_shift<='0';
-		elsif(ack_data='1' and clk_90_lead='1' and read_mode='1') then
+		elsif(ack_data='1' and clk_90_lead='1' and write_mode='1') then
 			DR_shift<='1';
 		elsif (falling_edge(clk_90_lead)) then
 			DR_shift <= '0';
@@ -420,8 +422,8 @@ begin
 			IRQ(0) <= '0';
 		elsif (IACK(0) ='1') then
 			IRQ(0) <= '0';
-		elsif(rising_edge(stop) and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
-				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
+		elsif(rising_edge(stop) and ((read_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+				(write_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
 			IRQ(0) <= '1';
 		end if;
 	end process;
@@ -434,7 +436,7 @@ begin
 			IRQ(1) <= '0';
 		elsif (IACK(1) ='1') then
 			IRQ(1) <= '0';
-		elsif(ack='0' and ack_finished='1' and ack_sent='0' and not(read_mode='1' and ack_addr_sent='1')
+		elsif(ack='0' and ack_finished='1' and ack_sent='0' and not(write_mode='1' and ack_addr_sent='1')
 					and not(stop='1') and SCL='0') then
 			IRQ(1) <= '1';
 		end if;
