@@ -137,8 +137,8 @@ begin
 		wait for TIME_RST + TIME_DELTA;
 		
 		ADDR_slv <= "01";--DR address
-		--bits 7:0 data received	
-		D_slv <= x"0000_0000";-- cleans DR	
+		--bits 7:0 data received or to be read by master	
+		D_slv <= x"0000_00A4";-- data to be read by master
 		WREN_slv <= '1';
 		wait for TIME_DELTA;
 
