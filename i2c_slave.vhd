@@ -144,9 +144,9 @@ begin
 	
 	--data register: data to be transmited or received, or address
 	DR_wren <= address_decoder_wren(1);
-	DR_ena <= 	DR_shift when read_mode='1' else
+	DR_ena <= 	DR_shift when read_mode='0' else
 					DR_wren;
-	DR_in <= DR_out(31-N downto 0) & DR_in_shift(N-1 downto 0) when read_mode='1' else-- read mode (master receiver after address acknowledgement)
+	DR_in <= DR_out(31-N downto 0) & DR_in_shift(N-1 downto 0) when read_mode='0' else-- read mode (master receiver after address acknowledgement)
 				D;-- write mode (master transmitter)
 	
 	DR: d_flip_flop port map(D => DR_in,

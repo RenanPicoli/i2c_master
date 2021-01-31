@@ -32,6 +32,7 @@ component i2c_slave
 	);
 end component;
 
+--master signals
 signal D: std_logic_vector(31 downto 0);--for register write
 signal CLK: std_logic;--for register read/write, also used to generate SCL
 signal ADDR: std_logic_vector(1 downto 0);--address offset of registers relative to peripheral base address
@@ -45,9 +46,14 @@ signal IRQ: std_logic;--interrupt request
 signal SDA: std_logic;--open drain data line
 signal SCL: std_logic;--open drain clock line
 
+--slave signals
+signal D_slv: std_logic_vector(31 downto 0);--for register write
+signal ADDR_slv: std_logic_vector(1 downto 0);--address offset of registers relative to peripheral base address
+signal WREN_slv: std_logic;--enables register write
+
 signal read_mode: std_logic;
 signal write_mode: std_logic;
-constant RW_bit: std_logic:='1';-- 1 read mode; 0 write mode
+constant RW_bit: std_logic:='0';-- 1 read mode; 0 write mode
 begin
 	--all these times are relative to the beginning of simulation
 	--'H' models the pull up resistor in SDA line
@@ -72,20 +78,20 @@ begin
 	);
 	
 	slave: i2c_slave
-	port map(D 		=> D,
+	port map(D 		=> D_slv,
 				CLK	=> CLK,
-				ADDR 	=> ADDR,
+				ADDR 	=> ADDR_slv,
 				RST	=>	RST,
-				WREN	=> WREN,
+				WREN	=> WREN_slv,
 				RDEN	=>	RDEN,
 				IACK	=> IACK,
-				Q		=>	Q,
-				IRQ	=>	IRQ,
+				Q		=>	open,
+				IRQ	=>	open,
 				SDA	=>	SDA,
 				SCL	=>	SCL
 	);
 	
-	clock: process--200kHz input clock
+	clock: process--200kHz input clock (common to slave and master)
 	begin
 		CLK <= '0';
 		wait for 2.5 us;
@@ -96,30 +102,52 @@ begin
 	--I2C registers configuration
 	read_mode <= RW_bit;
 	write_mode <= not read_mode;
-	setup:process
+	
+	master_setup:process
 	begin
 		--zeroes & WORDS & SLV ADDR & R/W(1 read mode; 0 write mode)
-		D <= (31 downto 10 =>'0') & "01" & "0000101" & RW_bit;--WORDS: 01; ADDR: 1010
 		ADDR <= "00";--CR address
+		D <= (31 downto 10 =>'0') & "01" & "0000101" & RW_bit;--WORDS: 01; ADDR: 1010
 		WREN <= '1';
 		I2C_EN <= '0';
 		wait for TIME_RST + TIME_DELTA;
 		
 		--bits 7:0 data to be transmitted
-		D <= x"0000_0095";-- 1001 0101
-		ADDR <= "01";--DR address		
+		ADDR <= "01";--DR address	
+		D <= x"0000_0095";-- 1001 0101	
 		WREN <= '1';
 		wait for TIME_DELTA;
 
-		D<=(others=>'0');
 		ADDR<="11";--invalid address
+		D<=(others=>'0');
 		WREN <= '0';
 		I2C_EN <= '1';
 		wait for TIME_DELTA;
 		
 		I2C_EN <= '0';
-		wait;
-	end process setup;
-	RST <= '1', '0' after TIME_RST;
+		wait;--process executes once
+	end process master_setup;
+	
+	slave_setup:process
+	begin
+		--zeroes & WORDS & OADDR & R/W(must store RW bit sent by master; 1 read mode; 0 write mode)
+		ADDR_slv <= "00";--CR address
+		D_slv <= (31 downto 10 =>'0') & "01" & "0000101" & 'X';--WORDS: 01; OADDR: 0010
+		WREN_slv <= '1';
+		wait for TIME_RST + TIME_DELTA;
+		
+		ADDR_slv <= "01";--DR address
+		--bits 7:0 data received	
+		D_slv <= x"0000_0000";-- cleans DR	
+		WREN_slv <= '1';
+		wait for TIME_DELTA;
+
+		ADDR_slv<="11";--invalid address
+		D_slv<=(others=>'0');
+		WREN_slv <= '0';
+		wait for TIME_DELTA;
+		wait;--process executes once
+	end process slave_setup;
+	RST <= '1', '0' after TIME_RST;--reset common to slave and master
 	
 end architecture test;
