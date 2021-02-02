@@ -119,8 +119,8 @@ begin
 		elsif	((ack='0' and write_mode='1' and words_received=to_integer(unsigned(WORDS))+1) or
 				 (ack='0' and read_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
 				 (rx_addr='1' and bits_received=N and SCL='0' and address_received(N-1 downto 1) /= OADDR(N-1 downto 1)) or
-				(ack='0' and ack_finished='1' and ack_received='0' and SCL='0' and
-				not(read_mode='1' and ack_addr_sent='1')))--implicitly samples ack_received at falling_edge of ack
+				(ack='1' and ack_received='0' and ack_finished='1' and SCL='1' and
+				not(read_mode='1' and ack_addr='1')))--implicitly samples ack_received at falling_edge of ack
 				then
 			stop <= '1';
 		elsif (rising_edge(SDA) and SCL='1') then
@@ -186,20 +186,14 @@ begin
 	--serial write on SDA bus
 	serial_w: process(tx,tx,fifo_sda_out,RST,ack,stop,SCL,clk_90_lead,read_mode,write_mode)
 	begin
-		if (RST ='1') then
+		if (RST ='1' or stop='1') then
 			SDA <= 'Z';
+		elsif ((ack = '1' and write_mode='1') or ack_addr='1') then
+			SDA <= '0';--slave acknowledges
 		elsif (ack = '1' and read_mode='1') then
-			SDA <= '0';--master acknowledges
-		elsif (ack = '1' and write_mode='1') then
-			SDA <= 'Z';--allows the slave to acknowledge
-		elsif (stop = '1' and SCL='0') then
-			SDA <= '0';
-		elsif (stop = '1' and SCL='1' and clk_90_lead='0') then
-			SDA <= 'Z';
-		elsif (stop='1') then
-			SDA <= '0';
-		elsif(tx='1')then
-			SDA <= 'Z';--releases the bus when reading, so slave can drive it
+			SDA <= 'Z';--allows the master to acknowledge
+		elsif(rx='1')then
+			SDA <= 'Z';--releases the bus when reading, so master can drive it
 		elsif(tx='1')then--SDA is driven using the fifo, which updates at rising_edge of clk_90_lead
 			if (fifo_sda_out(N+1) = '1') then
 				SDA <= 'Z';
@@ -369,7 +363,7 @@ begin
 			ack_received <= '0';
 			--to_x01 converts 'H','L' to '1','0', respectively. Needed only IN SIMULATION
 		elsif	(rising_edge(SCL)) then
-			ack_received <= ack_data and not(to_x01(SDA)) and not(write_mode);
+			ack_received <= ack_data and not(to_x01(SDA)) and write_mode;
 		end if;
 	end process;
 	
