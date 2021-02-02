@@ -363,7 +363,7 @@ begin
 			ack_received <= '0';
 			--to_x01 converts 'H','L' to '1','0', respectively. Needed only IN SIMULATION
 		elsif	(rising_edge(SCL)) then
-			ack_received <= ack_data and not(to_x01(SDA)) and write_mode;
+			ack_received <= ack_data and not(to_x01(SDA)) and read_mode;
 		end if;
 	end process;
 	
