@@ -57,10 +57,11 @@ constant RW_bit: std_logic:='1';-- 1 read mode; 0 write mode
 begin
 	--all these times are relative to the beginning of simulation
 	--'H' models the pull up resistor in SDA line
-	SDA <='H','0' after 60 us,'H' after 67.5 us,'0' after 110 us, 'H' after 117.5 us,
-			'0' after 160 us, 'H' after 167.5 us when write_mode='1' else--slave ack for writes
-			'H','0' after 60 us,'H' after 67.5 us, '0' after 80 us, 'H' after 90 us, '0' after 120 us, 'H' after 140 us when read_mode='1' else--master will read F0 from slave
-			'X';
+--	SDA <='H','0' after 60 us,'H' after 67.5 us,'0' after 110 us, 'H' after 117.5 us,
+--			'0' after 160 us, 'H' after 167.5 us when write_mode='1' else--slave ack for writes
+--			'H','0' after 60 us,'H' after 67.5 us, '0' after 80 us, 'H' after 90 us, '0' after 120 us, 'H' after 140 us when read_mode='1' else--master will read F0 from slave
+--			'X';
+	SDA <= 'H';--pull up resistor
 	
 	DUT: entity work.i2c_master
 	port map(D 		=> D,
