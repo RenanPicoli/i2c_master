@@ -430,8 +430,7 @@ begin
 			IRQ(1) <= '0';
 		elsif (IACK(1) ='1') then
 			IRQ(1) <= '0';
-		elsif(ack='0' and ack_finished='1' and ack_received='0' and not(write_mode='1' and ack_addr_sent='1')
-					and not(stop='1') and SCL='0') then
+		elsif(falling_edge(ack_data) and ack_received='0' and read_mode='1' and not(stop='1')) then
 			IRQ(1) <= '1';
 		end if;
 	end process;
