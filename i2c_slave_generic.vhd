@@ -67,6 +67,7 @@ architecture structure of i2c_slave_generic is
 	signal CLK_90_lead: std_logic;
 	signal address_received: std_logic_vector(N-1 downto 0);--address received from bus (includes R/W bit)
 	signal ack_finished: std_logic;--active HIGH, indicates the ack was high in previous scl cycle [0 1].
+	signal ack_data_finished: std_logic;--active HIGH, indicates the ack_data was high in previous scl cycle [0 1].
 	signal CLK_IN_n: std_logic;-- not CLK
 	signal bits_sent: natural;--number of bits transmitted
 	signal bits_received: natural;--number of bits received
@@ -111,7 +112,7 @@ begin
 	
 	---------------stop flag generation----------------------------
 	----------stop flag will be used to drive sda,scl--------------
-	process	(RST,ack,write_mode,read_mode,ack_received,ack_addr_sent,ack_finished,
+	process	(RST,ack,write_mode,read_mode,ack_received,ack_addr_sent,ack_data_finished,
 				SDA,SCL,clk_90_lead,words_sent,words_received,WORDS,OADDR,address_received)
 	begin
 		if (RST ='1') then
@@ -119,8 +120,7 @@ begin
 		elsif	((ack='0' and write_mode='1' and words_received=to_integer(unsigned(WORDS))+1) or
 				 (ack='0' and read_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
 				 (rx_addr='1' and bits_received=N and SCL='0' and address_received(N-1 downto 1) /= OADDR(N-1 downto 1)) or
-				(ack='1' and ack_received='0' and ack_finished='1' and SCL='1' and
-				not(read_mode='1' and ack_addr='1')))--implicitly samples ack_received at falling_edge of ack
+				(ack_received='0' and ack_data_finished='1' and read_mode='1' and SCL='0'))--implicitly samples ack_received at falling_edge of ack
 				then
 			stop <= '1';
 		elsif (rising_edge(SDA) and SCL='1') then
@@ -153,12 +153,9 @@ begin
 	end process;
 	
 	---------------read_mode/write_mode flag generation----------------------------
-	process(RST,rx_addr,bits_received,SDA,SCL,stop)
+	process(RST,rx_addr,bits_received,SDA,SCL,stop,ack_data_finished)
 	begin
-		if (RST ='1' or stop='1') then
-			read_mode	<= '0';
-			write_mode	<= '0';
-		elsif (stop='1') then
+		if (RST ='1' or (stop='1' and ack_data_finished='0')) then
 			read_mode	<= '0';
 			write_mode	<= '0';
 		elsif	(rx_addr='1' and bits_received=N-1 and rising_edge(SCL)) then--bits_received=N-1 because it goes to N at rising edge of SCL
@@ -379,6 +376,19 @@ begin
 		end if;
 	end process;
 	
+	---------------ack_data_finished flag generation------------------------
+	--------for use with stop generation when NACK occurs-------------------
+	ack_data_f: process(ack_data,SCL,SDA,RST)
+	begin
+		if (RST ='1') then
+			ack_data_finished <= '0';
+		elsif (SCL='1') then
+			ack_data_finished <= '0';
+		elsif	(falling_edge(SCL)) then
+			ack_data_finished <= ack_data;--active HIGH, indicates the ack_data was high in previous scl cycle [0 1].
+		end if;
+	end process;
+	
 	---------------ack_addr_sent flag generation------------------------
 	process(RST,stop,ack)
 	begin
@@ -424,13 +434,13 @@ begin
 	
 	---------------IRQ NACK---------------------------
 	-------------NACK received------------------------
-	process(RST,IACK,ack,ack_finished,ack_received,read_mode,ack_addr_sent,stop,SCL)
+	process(RST,IACK,ack_data,ack_received,read_mode)
 	begin
 		if(RST='1') then
 			IRQ(1) <= '0';
 		elsif (IACK(1) ='1') then
 			IRQ(1) <= '0';
-		elsif(falling_edge(ack_data) and ack_received='0' and read_mode='1' and not(stop='1')) then
+		elsif(falling_edge(ack_data) and ack_received='0' and read_mode='1') then
 			IRQ(1) <= '1';
 		end if;
 	end process;

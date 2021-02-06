@@ -133,7 +133,7 @@ begin
 	begin
 		--zeroes & WORDS & OADDR & R/W(must store RW bit sent by master; 1 read mode; 0 write mode)
 		ADDR_slv <= "00";--CR address
-		D_slv <= (31 downto 10 =>'0') & "01" & "0000101" & 'X';--WORDS: 01; OADDR: 0010
+		D_slv <= (31 downto 10 =>'0') & "01" & "0000101" & 'X';--WORDS: 01; OADDR: 0101
 		WREN_slv <= '1';
 		wait for TIME_RST + TIME_DELTA;
 		
