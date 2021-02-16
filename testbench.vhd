@@ -53,7 +53,7 @@ signal WREN_slv: std_logic;--enables register write
 
 signal read_mode: std_logic;
 signal write_mode: std_logic;
-constant RW_bit: std_logic:='1';-- 1 read mode; 0 write mode
+constant RW_bit: std_logic:='0';-- 1 read mode; 0 write mode
 begin
 	--all these times are relative to the beginning of simulation
 	--'H' models the pull up resistor in SDA line

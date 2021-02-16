@@ -102,8 +102,10 @@ architecture structure of i2c_slave is
 	signal DR_wren:std_logic;--enables write value from D port
 	signal DR_ena:std_logic;--DR ENA (enables DR write)
 	
+	signal CR_in: std_logic_vector(31 downto 0);--CR input
 	signal CR_Q: std_logic_vector(31 downto 0);--CR output
 	signal CR_wren:std_logic;
+	signal CR_ena:std_logic;
 	
 	signal SR_mode: std_logic_vector(1 downto 0);--read_mode: bit 0; write_mode: bit 1
 	signal SR_D: std_logic_vector(31 downto 0);--SR data intput
@@ -164,14 +166,18 @@ begin
 									Q=> DR_out
 									);
 	
-	--control register: bits 9:8 WORDS - 1 (MSByte first, MSB first);
+	--control register:
+	--bit 10: unused
+	--bits 9:8 WORDS - 1 (MSByte first, MSB first);
 	--bits 7:1 slave address;
 	--bit 0: unused
+	CR_in <= D;
+	CR_ena <= CR_wren;
 	CR_wren <= address_decoder_wren(0);
-	CR: d_flip_flop port map(D => D,
+	CR: d_flip_flop port map(D => CR_in,
 									RST=> RST,--resets all previous history of input signal
 									CLK=> CLK,--sampling clock
-									ENA=> CR_wren,
+									ENA=> CR_ena,
 									Q=> CR_Q
 									);
 									
