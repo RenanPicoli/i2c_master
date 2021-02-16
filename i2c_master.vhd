@@ -20,7 +20,6 @@ entity i2c_master is
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write
 			RDEN: in std_logic;--enables register read
-			I2C_EN: in std_logic;--enables transfer to start
 			IACK: in std_logic;--interrupt acknowledgement
 			Q: out std_logic_vector(31 downto 0);--for register read
 			IRQ: out std_logic;--interrupt request

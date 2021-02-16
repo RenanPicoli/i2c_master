@@ -39,7 +39,6 @@ signal ADDR: std_logic_vector(1 downto 0);--address offset of registers relative
 signal RST:	std_logic;--reset
 signal WREN: std_logic;--enables register write
 signal RDEN: std_logic;--enables register read
-signal I2C_EN: std_logic;--enables trasfer to start
 signal IACK: std_logic;--interrupt acknowledgement
 signal Q: std_logic_vector(31 downto 0);--for register read
 signal IRQ: std_logic;--interrupt request
@@ -57,10 +56,6 @@ constant RW_bit: std_logic:='0';-- 1 read mode; 0 write mode
 begin
 	--all these times are relative to the beginning of simulation
 	--'H' models the pull up resistor in SDA line
---	SDA <='H','0' after 60 us,'H' after 67.5 us,'0' after 110 us, 'H' after 117.5 us,
---			'0' after 160 us, 'H' after 167.5 us when write_mode='1' else--slave ack for writes
---			'H','0' after 60 us,'H' after 67.5 us, '0' after 80 us, 'H' after 90 us, '0' after 120 us, 'H' after 140 us when read_mode='1' else--master will read F0 from slave
---			'X';
 	SDA <= 'H';--pull up resistor
 	
 	DUT: entity work.i2c_master
@@ -70,7 +65,6 @@ begin
 				RST	=>	RST,
 				WREN	=> WREN,
 				RDEN	=>	RDEN,
-				I2C_EN=> I2C_EN,
 				IACK	=> IACK,
 				Q		=>	Q,
 				IRQ	=>	IRQ,
@@ -108,9 +102,8 @@ begin
 	begin
 		--zeroes & WORDS & SLV ADDR & R/W(1 read mode; 0 write mode)
 		ADDR <= "00";--CR address
-		D <= (31 downto 10 =>'0') & "01" & "0000101" & RW_bit;--WORDS: 01; ADDR: 1010
+		D <= (31 downto 10 =>'0') & "01" & "0000101" & RW_bit;--I2C_EN: 0; WORDS: 01; ADDR: 1010
 		WREN <= '1';
-		I2C_EN <= '0';
 		wait for TIME_RST + TIME_DELTA;
 		
 		--bits 7:0 data to be transmitted
@@ -119,13 +112,12 @@ begin
 		WREN <= '1';
 		wait for TIME_DELTA;
 
-		ADDR<="11";--invalid address
-		D<=(others=>'0');
-		WREN <= '0';
-		I2C_EN <= '1';
+		ADDR <= "00";--CR address, will start transfer
+		D<=(31 downto 11 =>'0') & '1' & "01" & "0000101" & RW_bit;--I2C_EN: 1; WORDS: 01; ADDR: 1010
+		WREN <= '1';
 		wait for TIME_DELTA;
 		
-		I2C_EN <= '0';
+		WREN <= '0';
 		wait;--process executes once
 	end process master_setup;
 	
