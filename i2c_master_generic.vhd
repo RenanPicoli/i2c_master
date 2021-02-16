@@ -42,7 +42,7 @@ architecture structure of i2c_master_generic is
 	);
 	end component;
 
-	signal fifo_sda_out: std_logic_vector(N+1 downto 0);--data to write on SDA: one byte plus start and stop bits
+	signal fifo_sda_out: std_logic_vector(N downto 0);--data to write on SDA: one byte plus stop bit
 	signal fifo_sda_in: std_logic_vector(N-1 downto 0);-- data read from SDA: one byte plus start and stop bits
 	
 	--signals representing I2C transfer state
@@ -62,6 +62,7 @@ architecture structure of i2c_master_generic is
 	
 	--signals inherent to this implementation
 	signal CLK: std_logic;--used to generate SCL (when scl_en = '1')
+	signal I2C_EN_stretched: std_logic;--used to generate start bit
 	
 	-- CLK 90 degrees in advance, its rising_edge is used to write on SDA in middle of SCL low
 	signal CLK_90_lead: std_logic;
@@ -98,15 +99,27 @@ begin
 	);
 	
 	---------------start flag generation----------------------------
-	process(RST,SDA,SCL)
+	process(RST,I2C_EN_stretched,clk_90_lead)
 	begin
 		if (RST ='1') then
 			start	<= '0';
-		elsif (SCL='0') then
+		elsif (clk_90_lead='1') then
 			start	<= '0';
 		--falling_edge e rising_edge don't need to_x01 because it is already used inside these functions
-		elsif	(falling_edge(SDA) and SCL='1') then
+		elsif	(falling_edge(I2C_EN_stretched)) then
 			start <= '1';
+		end if;
+	end process;
+	
+	---------------I2C_EN_stretched flag generation----------------------------
+	process(RST,clk_90_lead,I2C_EN)
+	begin
+		if (RST ='1') then
+			I2C_EN_stretched	<= '0';
+		elsif (I2C_EN='1') then
+			I2C_EN_stretched	<= '1';
+		elsif	(falling_edge(clk_90_lead)) then
+			I2C_EN_stretched <= '0';
 		end if;
 	end process;
 	
@@ -128,13 +141,13 @@ begin
 	end process;
 	
 	---------------tx_addr flag generation----------------------------
-	process(ack,I2C_EN,RST,write_mode,stop)
+	process(ack,start,RST,stop)
 	begin
 		if (RST ='1' or stop='1') then
 			tx_addr	<= '0';
 		elsif (ack='1') then
 			tx_addr	<= '0';
-		elsif	(rising_edge(I2C_EN)) then
+		elsif	(falling_edge(start)) then
 			tx_addr <= '1';
 		end if;
 	end process;
@@ -152,13 +165,13 @@ begin
 	end process;
 	
 	---------------SCL generation----------------------------
-	process(stop,SCL,tx,rx,CLK,RST)
+	process(start,stop,SCL,tx,rx,CLK,RST)
 	begin
 		if (RST ='1') then
 			scl_en	<= '0';
 		elsif (stop = '1' and SCL = '1') then
 			scl_en	<= '0';
-		elsif	((tx ='1' or rx ='1') and falling_edge(CLK)) then
+		elsif	((start='1' or tx ='1' or rx ='1') and falling_edge(CLK)) then
 			scl_en <= '1';
 		end if;
 	end process;
@@ -166,10 +179,12 @@ begin
 
 	---------------SDA write----------------------------
 	--serial write on SDA bus
-	serial_w: process(tx,rx,fifo_sda_out,RST,ack,stop,SCL,clk_90_lead,read_mode,write_mode,ack_data)
+	serial_w: process(start,tx,rx,fifo_sda_out,RST,ack,stop,SCL,clk_90_lead,read_mode,write_mode,ack_data)
 	begin
 		if (RST ='1') then
 			SDA <= 'Z';
+		elsif (start = '1') then
+			SDA <= '0';--start bit
 		elsif (ack_data = '1' and read_mode='1') then
 			SDA <= '0';--master acknowledges
 		elsif (ack = '1' and write_mode='1') then
@@ -183,7 +198,7 @@ begin
 		elsif(rx='1')then
 			SDA <= 'Z';--releases the bus when reading, so slave can drive it
 		elsif(tx='1')then--SDA is driven using the fifo, which updates at rising_edge of clk_90_lead
-			if (fifo_sda_out(N+1) = '1') then
+			if (fifo_sda_out(N) = '1') then
 				SDA <= 'Z';
 			else
 				SDA <= '0';
@@ -201,14 +216,14 @@ begin
 		if (RST ='1'  or stop='1') then
 			fifo_sda_out <= (others => '1');
 		elsif (I2C_EN = '1') then
-			fifo_sda_out <= '0' & ADDR(N-1 downto 0) & '0';--start bit & ADDR(N-1 downto 0) & stop bit
+			fifo_sda_out <= ADDR(N-1 downto 0) & '0';--ADDR(N-1 downto 0) & stop bit
 		elsif (tx_data = '1' and ack_received = '1') then
 			--DR_out(...) & dummy bits
 			fifo_sda_out <= DR_out(N-1+N*(to_integer(unsigned(WORDS))-words_sent)
-									downto 0+N*(to_integer(unsigned(WORDS))-words_sent)) & "11";
+									downto 0+N*(to_integer(unsigned(WORDS))-words_sent)) & '1';
 		--updates fifo at rising edge of clk_90_lead so it can be read at rising_edge of SCL
 		elsif(tx='1' and rising_edge(CLK_90_lead))then
-			fifo_sda_out <= fifo_sda_out(N downto 0) & '1';--MSB is sent first
+			fifo_sda_out <= fifo_sda_out(N-1 downto 0) & '1';--MSB is sent first
 		end if;
 
 	end process;
