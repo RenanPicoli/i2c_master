@@ -103,8 +103,10 @@ architecture structure of i2c_master is
 	signal DR_wren:std_logic;--enables write value from D port
 	signal DR_ena:std_logic;--DR ENA (enables DR write)
 	
-	signal CR_Q: std_logic_vector(31 downto 0);--data to be transmitted
+	signal CR_in: std_logic_vector(31 downto 0);--CR input
+	signal CR_Q: std_logic_vector(31 downto 0);--CR output
 	signal CR_wren:std_logic;
+	signal CR_ena:std_logic;
 	
 	signal all_registers_output: array32 (2 downto 0);
 	signal all_periphs_rden: std_logic_vector(2 downto 0);
@@ -121,7 +123,7 @@ begin
 				CLK_IN => CLK,
 				ADDR => CR_Q(7 downto 0),
 				RST => RST,
-				I2C_EN => I2C_EN,
+				I2C_EN => CR_Q(10),
 				WORDS => CR_Q(9 downto 8),
 				IACK => all_i2c_iack,
 				IRQ => all_i2c_irq,
@@ -159,14 +161,18 @@ begin
 									Q=> DR_out
 									);
 	
-	--control register: bits 9:8 WORDS - 1 (MSByte first, MSB first);
+	--control register: 
+	--bit 10: I2C_EN (write '1' to start, reset automatically)
+	--bits 9:8 WORDS - 1 (MSByte first, MSB first);
 	--bits 7:1 slave address;
 	--bit 0: read (0) or write (1)
+	CR_in <= D when CR_wren='1' else CR_Q(31 downto 11) & '0' & CR_Q(9 downto 0);
+	CR_ena <= '1';
 	CR_wren <= address_decoder_wren(0);
-	CR: d_flip_flop port map(D => D,
+	CR: d_flip_flop port map(D => CR_in,
 									RST=> RST,--resets all previous history of input signal
 									CLK=> CLK,--sampling clock
-									ENA=> CR_wren,
+									ENA=> CR_ena,
 									Q=> CR_Q
 									);
 
