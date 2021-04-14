@@ -15,7 +15,7 @@ use work.my_types.all;--array32
 entity i2c_master is
 	port (
 			D: in std_logic_vector(31 downto 0);--for register write
-			ADDR: in std_logic_vector(1 downto 0);--address offset of registers relative to peripheral base address
+			ADDR: in std_logic_vector(2 downto 0);--address offset of registers relative to peripheral base address
 			CLK: in std_logic;--for register read/write, also used to generate SCL
 			RST: in std_logic;--reset
 			WREN: in std_logic;--enables register write
@@ -29,17 +29,21 @@ entity i2c_master is
 end i2c_master;
 
 architecture structure of i2c_master is
-	component address_decoder_register_map
-	--N: address width in bits
-	--boundaries: upper limits of each end (except the last, which is 2**N-1)
-	generic	(N: natural);
-	port(	ADDR: in std_logic_vector(N-1 downto 0);-- input
+	component address_decoder_memory_map
+	--N: word address width in bits
+	--B boundaries: list of values of the form (starting address,final address) of all peripherals, written as integers,
+	--list MUST BE "SORTED" (start address(i) < final address(i) < start address (i+1)),
+	--values OF THE FORM: "(b1 b2..bN 0..0),(b1 b2..bN 1..1)"
+	generic	(N: natural; B: boundaries);
+	port(	ADDR: in std_logic_vector(N-1 downto 0);-- input, it is a word address
 			RDEN: in std_logic;-- input
 			WREN: in std_logic;-- input
-			WREN_OUT: out std_logic_vector;-- output
 			data_in: in array32;-- input: outputs of all peripheral/registers
+			RDEN_OUT: out std_logic_vector;-- output
+			WREN_OUT: out std_logic_vector;-- output
 			data_out: out std_logic_vector(31 downto 0)-- data read
 	);
+
 	end component;
 	
 	component d_flip_flop
@@ -72,6 +76,7 @@ architecture structure of i2c_master is
 	component interrupt_controller
 	generic	(L: natural);--L: number of IRQ lines
 	port(	D: in std_logic_vector(31 downto 0);-- input: data to register write
+			ADDR: in std_logic_vector(1 downto 0);--address offset of registers relative to peripheral base address
 			CLK: in std_logic;-- input
 			RST: in std_logic;-- input
 			WREN: in std_logic;-- input
@@ -84,6 +89,17 @@ architecture structure of i2c_master is
 	);
 
 	end component;
+
+	
+	-----------signals for memory map interfacing----------------
+	constant ranges: boundaries := 	(--notation: base#value#
+												(16#00#,16#00#),--CR
+												(16#01#,16#01#),--DR
+												(16#04#,16#07#) --interrupt controller
+												);
+	signal all_periphs_output: array32 (2 downto 0);
+	signal all_periphs_rden: std_logic_vector(2 downto 0);
+	signal all_periphs_wren: std_logic_vector(2 downto 0);
 	
 	constant N: natural := 4;--number of bits in each data written/read
 	signal read_mode: std_logic;
@@ -100,16 +116,14 @@ architecture structure of i2c_master is
 	signal DR_in_shift:  std_logic_vector(31 downto 0);--data received from I2C bus
 	signal DR_shift:std_logic;--enables write value from I2C generic component (received from I2C bus)
 	signal DR_wren:std_logic;--enables write value from D port
+	signal DR_rden:std_logic;-- not used, just to keep form
 	signal DR_ena:std_logic;--DR ENA (enables DR write)
 	
 	signal CR_in: std_logic_vector(31 downto 0);--CR input
 	signal CR_Q: std_logic_vector(31 downto 0);--CR output
 	signal CR_wren:std_logic;
+	signal CR_rden:std_logic;
 	signal CR_ena:std_logic;
-	
-	signal all_registers_output: array32 (2 downto 0);
-	signal all_periphs_rden: std_logic_vector(2 downto 0);
-	signal address_decoder_wren: std_logic_vector(2 downto 0);
 begin
 
 	read_mode <= CR_Q(0);
@@ -130,11 +144,10 @@ begin
 				SCL => SCL
 	);
 	
-	irq_ctrl_wren <= address_decoder_wren(2);
-	irq_ctrl_rden <= '1';--not necessary, just to keep form
 	irq_ctrl: interrupt_controller
 	generic map (L => 2)
 	port map(D => D,
+				ADDR => ADDR(1 downto 0),
 				CLK => CLK,
 				RST => RST,
 				WREN => irq_ctrl_wren,
@@ -147,7 +160,6 @@ begin
 	);
 	
 	--data register: data to be transmited or received, or address
-	DR_wren <= address_decoder_wren(1);
 	DR_ena <= 	DR_shift when read_mode='1' else
 					DR_wren;
 	DR_in <= DR_out(31-N downto 0) & DR_in_shift(N-1 downto 0) when read_mode='1' else-- read mode (master receiver after address acknowledgement)
@@ -167,7 +179,6 @@ begin
 	--bit 0: read (0) or write (1)
 	CR_in <= D when CR_wren='1' else CR_Q(31 downto 11) & '0' & CR_Q(9 downto 0);
 	CR_ena <= '1';
-	CR_wren <= address_decoder_wren(0);
 	CR: d_flip_flop port map(D => CR_in,
 									RST=> RST,--resets all previous history of input signal
 									CLK=> CLK,--sampling clock
@@ -176,17 +187,27 @@ begin
 									);
 
 -------------------------- address decoder ---------------------------------------------------
-	--addr 00: CR
-	--addr 01: DR
-	--addr 10: irq_ctrl (interrupts pending)
-	all_registers_output <= (0=> CR_Q,1=> DR_out,2=> irq_ctrl_Q);
-	decoder: address_decoder_register_map
-	generic map(N => 2)
-	port map(ADDR => ADDR,
-				RDEN => RDEN,
-				WREN => WREN,
-				data_in => all_registers_output,
-				WREN_OUT => address_decoder_wren,
-				data_out => Q
+	all_periphs_output	<= (2 => irq_ctrl_Q,	1 => DR_out,	0 => CR_Q);
+
+	irq_ctrl_rden	<= all_periphs_rden(2);-- not used, just to keep form
+	DR_rden			<= all_periphs_rden(1);
+	CR_rden			<= all_periphs_rden(0);
+
+	irq_ctrl_wren	<= all_periphs_wren(2);
+	DR_wren			<= all_periphs_wren(1);
+	CR_wren			<= all_periphs_wren(0);
+	memory_map: address_decoder_memory_map
+	--N: word address width in bits
+	--B boundaries: list of values of the form (starting address,final address) of all peripherals, written as integers,
+	--list MUST BE "SORTED" (start address(i) < final address(i) < start address (i+1)),
+	--values OF THE FORM: "(b1 b2..bN 0..0),(b1 b2..bN 1..1)"
+	generic map (N => 3, B => ranges)
+	port map (	ADDR => ADDR,-- input, it is a word address
+			RDEN => RDEN,-- input
+			WREN => WREN,-- input
+			data_in => all_periphs_output,-- input: outputs of all peripheral
+			RDEN_OUT => all_periphs_rden,-- output
+			WREN_OUT => all_periphs_wren,-- output
+			data_out => Q-- data read
 	);
 end structure;
