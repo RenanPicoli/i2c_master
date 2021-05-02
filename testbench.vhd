@@ -11,7 +11,7 @@ end testbench;
 
 architecture test of testbench is
 -- internal clock period.
-constant TIME_DELTA : time := 5 us;
+constant TIME_DELTA : time := 20 ns;
 
 --reset duration must be long enough to be perceived by the slowest clock (filter clock, both polarities)
 constant TIME_RST : time := 5 us;
@@ -86,12 +86,12 @@ begin
 				SCL	=>	SCL
 	);
 	
-	clock: process--200kHz input clock (common to slave and master)
+	clock: process--50MHz input clock (common to slave and master)
 	begin
 		CLK <= '0';
-		wait for 2.5 us;
+		wait for TIME_DELTA/2;
 		CLK <= '1';
-		wait for 2.5 us;
+		wait for TIME_DELTA/2;
 	end process clock;
 	
 	--I2C registers configuration
@@ -100,11 +100,13 @@ begin
 	
 	master_setup:process
 	begin
+		wait for TIME_RST;--+TIME_DELTA;
+		wait until CLK='0';
 		--zeroes & WORDS & SLV ADDR & R/W(1 read mode; 0 write mode)
 		ADDR <= "00";--CR address
 		D <= (31 downto 10 =>'0') & "01" & "0000101" & RW_bit;--I2C_EN: 0; WORDS: 01; ADDR: 1010
 		WREN <= '1';
-		wait for TIME_RST + TIME_DELTA;
+		wait for TIME_DELTA;
 		
 		--bits 7:0 data to be transmitted
 		ADDR <= "01";--DR address	
@@ -123,11 +125,13 @@ begin
 	
 	slave_setup:process
 	begin
+		wait for TIME_RST;--+TIME_DELTA;
+		wait until CLK='0';
 		--zeroes & WORDS & OADDR & R/W(must store RW bit sent by master; 1 read mode; 0 write mode)
 		ADDR_slv <= "00";--CR address
 		D_slv <= (31 downto 10 =>'0') & "01" & "0000101" & 'X';--WORDS: 01; OADDR: 0101
 		WREN_slv <= '1';
-		wait for TIME_RST + TIME_DELTA;
+		wait for TIME_DELTA;
 		
 		ADDR_slv <= "01";--DR address
 		--bits 7:0 data received or to be read by master	
