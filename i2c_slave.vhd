@@ -85,7 +85,7 @@ architecture structure of i2c_slave is
 
 	end component;
 	
-	constant N: natural := 4;--number of bits in each data written/read
+	constant N: natural := 8;--number of bits in each data written/read
 	signal read_mode: std_logic;
 	signal write_mode: std_logic;
 	signal all_i2c_irq: std_logic_vector(1 downto 0);--0: successfully transmitted all words; 1: NACK received
