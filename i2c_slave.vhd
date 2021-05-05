@@ -156,8 +156,19 @@ begin
 	DR_wren <= address_decoder_wren(1);
 	DR_ena <= 	DR_shift when write_mode='1' else
 					DR_wren;
-	DR_in <= DR_out(31-N downto 0) & DR_in_shift(N-1 downto 0) when write_mode='1' else-- read mode (master receiver after address acknowledgement)
-				D;-- write mode (master transmitter)
+					
+--	DR_in <= DR_out(31-N downto 0) & DR_in_shift(N-1 downto 0) when write_mode='1' else-- read mode (master receiver after address acknowledgement)
+--				D;-- write mode (master transmitter)
+	process(RST,DR_shift)
+	begin
+		if (RST='1') then
+			DR_in <= (others=>'0');
+		elsif (write_mode='0') then
+			DR_in <= D;
+		elsif (rising_edge(DR_shift) and write_mode='1') then
+			DR_in <= DR_out(31-N downto 0) & DR_in_shift(N-1 downto 0);
+		end if;
+	end process;
 	
 	DR: d_flip_flop port map(D => DR_in,
 									RST=> RST,--resets all previous history of input signal

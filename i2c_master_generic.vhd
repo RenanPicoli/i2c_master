@@ -84,7 +84,7 @@ begin
 	
 	---------------clock generation----------------------------
 	scl_clk: prescaler
-	generic map (factor => 2)
+	generic map (factor => 100)
 	port map(CLK_IN	=> CLK_IN,
 				RST		=> RST,
 				CLK_OUT	=> CLK
@@ -92,7 +92,7 @@ begin
 	
 	CLK_IN_n <= not CLK_IN;
 	scl_90_clk: prescaler
-	generic map (factor => 2)
+	generic map (factor => 100)
 	port map(CLK_IN	=>	CLK_IN_n,
 				RST		=> RST,
 				CLK_OUT	=> CLK_90_lead
