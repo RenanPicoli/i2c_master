@@ -61,14 +61,15 @@ architecture structure of i2c_slave_generic is
 	signal stop: std_logic;-- indicates stop bit being received
 	
 	--signals inherent to this implementation
+	constant SCL_divider: natural := 100;--MUST BE EVEN, fSCL=fCLK/SCL_divider, e.g. 50MHz/100=500kHz
 	signal CLK: std_logic;--used to generate SCL (when scl_en = '1')
 	
+	signal CLK_aux: std_logic;--twice the frequency of SCL/CLK
 	-- CLK 90 degrees in advance, its rising_edge is used to write on SDA in middle of SCL low
 	signal CLK_90_lead: std_logic;
 	signal address_received: std_logic_vector(N-1 downto 0);--address received from bus (includes R/W bit)
 	signal ack_finished: std_logic;--active HIGH, indicates the ack was high in previous scl cycle [0 1].
 	signal ack_data_finished: std_logic;--active HIGH, indicates the ack_data was high in previous scl cycle [0 1].
-	signal CLK_IN_n: std_logic;-- not CLK
 	signal bits_sent: natural;--number of bits transmitted
 	signal bits_received: natural;--number of bits received
 	signal words_sent: natural;--number of words(bytes) transmitted
@@ -83,19 +84,27 @@ begin
 	
 	---------------clock generation----------------------------
 	scl_clk: prescaler
-	generic map (factor => 2)
+	generic map (factor => SCL_divider)
 	port map(CLK_IN	=> CLK_IN,
 				RST		=> RST,
 				CLK_OUT	=> CLK
 	);
 	
-	CLK_IN_n <= not CLK_IN;
-	scl_90_clk: prescaler
-	generic map (factor => 2)
-	port map(CLK_IN	=>	CLK_IN_n,
+	CLK_aux_clk: prescaler
+	generic map (factor => SCL_divider/2)
+	port map(CLK_IN 	=> CLK_IN,
 				RST		=> RST,
-				CLK_OUT	=> CLK_90_lead
+				CLK_OUT	=> CLK_aux
 	);
+	
+	scl_90_clk: process(CLK,RST,CLK_aux)
+	begin
+		if (RST='1') then
+			clk_90_lead <= '0';
+		elsif (rising_edge(CLK_aux)) then
+			clk_90_lead <= not CLK;
+		end if;
+	end process;
 	
 	---------------start flag generation----------------------------
 	process(RST,SDA,SCL)

@@ -90,7 +90,6 @@ architecture structure of i2c_master is
 
 	end component;
 
-	
 	-----------signals for memory map interfacing----------------
 	constant ranges: boundaries := 	(--notation: base#value#
 												(16#00#,16#00#),--CR
@@ -100,7 +99,7 @@ architecture structure of i2c_master is
 	signal all_periphs_output: array32 (2 downto 0);
 	signal all_periphs_rden: std_logic_vector(2 downto 0);
 	signal all_periphs_wren: std_logic_vector(2 downto 0);
-	
+
 	constant N: natural := 8;--number of bits in each data written/read
 	signal read_mode: std_logic;
 	signal words: std_logic_vector(1 downto 0);--00: 1 word; 01:2 words; 10: 3 words (unused); 11: 4 words

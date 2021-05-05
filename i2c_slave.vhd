@@ -85,7 +85,7 @@ architecture structure of i2c_slave is
 
 	end component;
 	
-	constant N: natural := 4;--number of bits in each data written/read
+	constant N: natural := 8;--number of bits in each data written/read
 	signal read_mode: std_logic;
 	signal write_mode: std_logic;
 	signal all_i2c_irq: std_logic_vector(1 downto 0);--0: successfully transmitted all words; 1: NACK received
@@ -99,6 +99,7 @@ architecture structure of i2c_slave is
 	signal DR_in:  std_logic_vector(31 downto 0);--data that will be written to DR
 	signal DR_in_shift:  std_logic_vector(31 downto 0);--data received from I2C bus
 	signal DR_shift:std_logic;--enables write value from I2C generic component (received from I2C bus)
+	signal DR_shift_delayed:std_logic;--DR_shift delayed half clock cycle
 	signal DR_wren:std_logic;--enables write value from D port
 	signal DR_ena:std_logic;--DR ENA (enables DR write)
 	
@@ -154,22 +155,29 @@ begin
 	
 	--data register: data to be transmited or received, or address
 	DR_wren <= address_decoder_wren(1);
-	DR_ena <= 	DR_shift when write_mode='1' else
-					DR_wren;
-					
---	DR_in <= DR_out(31-N downto 0) & DR_in_shift(N-1 downto 0) when write_mode='1' else-- read mode (master receiver after address acknowledgement)
---				D;-- write mode (master transmitter)
-	process(RST,DR_shift)
+	
+	process(RST,CLK)
 	begin
-		if (RST='1') then
-			DR_in <= (others=>'0');
-		elsif (write_mode='0') then
-			DR_in <= D;
-		elsif (rising_edge(DR_shift) and write_mode='1') then
-			DR_in <= DR_out(31-N downto 0) & DR_in_shift(N-1 downto 0);
+		if(RST='1')then
+			DR_shift_delayed <= '0';
+		elsif(falling_edge(CLK))then
+			DR_shift_delayed <= DR_shift;
 		end if;
 	end process;
 	
+	process(RST,CLK,DR_shift_delayed,DR_wren)
+	begin
+		if(RST='1')then
+			DR_ena <= '0';
+		elsif(rising_edge(DR_shift_delayed))then
+			DR_ena <= '1';
+		else
+			DR_ena <= DR_wren;
+		end if;
+	end process;
+					
+	DR_in <= DR_out(31-N downto 0) & DR_in_shift(N-1 downto 0) when write_mode='1' else-- read mode (master receiver after address acknowledgement)
+				D;-- write mode (master transmitter)
 	DR: d_flip_flop port map(D => DR_in,
 									RST=> RST,--resets all previous history of input signal
 									CLK=> CLK,--sampling clock
