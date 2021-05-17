@@ -59,6 +59,7 @@ architecture structure of i2c_master_generic is
 	signal ack_addr_received: std_logic;--active HIGH, indicates slave-receiver acknowledged
 	signal start: std_logic;-- indicates start bit being transmitted (also applies to repeated start)
 	signal stop: std_logic;-- indicates stop bit being transmitted
+	signal idle: std_logic;-- i2c ready to start
 	
 	--signals inherent to this implementation
 	constant SCL_divider: natural := 100;--MUST BE EVEN, fSCL=fCLK/SCL_divider, e.g. 50MHz/100=500kHz
@@ -107,6 +108,18 @@ begin
 		end if;
 	end process;
 	
+	---------------idle flag generation----------------------------
+	process(RST,stop,I2C_EN)
+	begin
+		if(RST='1')then
+			idle <= '1';
+		elsif(I2C_EN='1')then
+			idle <= '0';
+		elsif(falling_edge(stop))then
+			idle <= '1';
+		end if;	
+	end process;
+	
 	---------------start flag generation----------------------------
 	process(RST,I2C_EN_stretched,clk_90_lead)
 	begin
@@ -134,13 +147,13 @@ begin
 	
 	---------------stop flag generation----------------------------
 	----------stop flag will be used to drive sda,scl--------------
-	process(RST,ack,write_mode,read_mode,ack_received,ack_addr_received,ack_finished,SDA,SCL,words_sent,words_received,WORDS)
+	process(RST,idle,ack,write_mode,read_mode,ack_received,ack_addr_received,ack_finished,SDA,SCL,words_sent,words_received,WORDS)
 	begin
-		if (RST ='1') then
+		if (RST ='1' or idle='1') then
 			stop	<= '0';
-		elsif	((ack='0' and write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
-				 (ack='0' and read_mode='1' and words_received=to_integer(unsigned(WORDS))+1) or
-				(ack='0' and ack_finished='1' and ack_received='0' and SCL='0' and
+		elsif	((ack='0' and ack_finished='1' and write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or--successfully wrote 
+				 (ack='0' and read_mode='1' and words_received=to_integer(unsigned(WORDS))+1) or--successfully read 
+				(ack='0' and ack_finished='1' and ack_received='0' and SCL='0' and--NACK
 				not(read_mode='1' and ack_addr_received='1')))--implicitly samples ack_received at falling_edge of ack
 				then
 			stop <= '1';
@@ -150,9 +163,9 @@ begin
 	end process;
 	
 	---------------tx_addr flag generation----------------------------
-	process(ack,start,RST,stop)
+	process(ack,start,RST,idle)
 	begin
-		if (RST ='1' or stop='1') then
+		if (RST ='1' or idle='1') then
 			tx_addr	<= '0';
 		elsif (ack='1') then
 			tx_addr	<= '0';
@@ -162,21 +175,21 @@ begin
 	end process;
 	
 	---------------tx_data flag generation----------------------------
-	process(tx_data,ack,ack_received,write_mode,bits_sent,words_sent,WORDS,SCL,RST,stop)
+	process(tx_data,ack,ack_received,write_mode,bits_sent,words_sent,WORDS,SCL,RST,idle)
 	begin
-		if (RST ='1' or stop='1') then
-			tx_data	<= '0';
+		if (RST ='1' or idle='1') then
+			tx_data <= '0';
 		elsif (tx_data='1' and ack='1' and bits_sent=N) then
-			tx_data	<= '0';
+			tx_data <= '0';
 		elsif	(ack='1' and ack_received='1' and write_mode='1' and (words_sent/=to_integer(unsigned(WORDS))+1) and falling_edge(SCL)) then
 			tx_data <= '1';
 		end if;
 	end process;
 	
 	---------------SCL generation----------------------------
-	process(start,stop,SCL,tx,rx,CLK,RST)
+	process(start,stop,idle,SCL,tx,rx,CLK,RST)
 	begin
-		if (RST ='1') then
+		if (RST ='1' or idle='1') then
 			scl_en	<= '0';
 		elsif (stop = '1' and SCL = '1') then
 			scl_en	<= '0';
@@ -188,9 +201,9 @@ begin
 
 	---------------SDA write----------------------------
 	--serial write on SDA bus
-	serial_w: process(start,tx,rx,fifo_sda_out,RST,ack,stop,SCL,clk_90_lead,read_mode,write_mode,ack_data)
+	serial_w: process(idle,start,tx,rx,fifo_sda_out,RST,ack,stop,SCL,clk_90_lead,read_mode,write_mode,ack_data)
 	begin
-		if (RST ='1') then
+		if (RST ='1' or idle='1') then
 			SDA <= 'Z';
 		elsif (start = '1') then
 			SDA <= '0';--start bit
@@ -220,9 +233,9 @@ begin
 	
 	---------------fifo_sda_out write-----------------------------
 	----might contain data from sda or from this component----
-	fifo_w: process(RST,I2C_EN,tx,tx_data,rx,ack,ack_received,CLK_90_lead,DR_out,ADDR,WORDS,words_sent,stop)
+	fifo_w: process(RST,idle,I2C_EN,tx,tx_data,rx,ack,ack_received,CLK_90_lead,DR_out,ADDR,WORDS,words_sent)
 	begin
-		if (RST ='1'  or stop='1') then
+		if (RST ='1' or idle='1') then
 			fifo_sda_out <= (others => '1');
 		elsif (I2C_EN = '1') then
 			fifo_sda_out <= ADDR(N-1 downto 0) & '0';--ADDR(N-1 downto 0) & stop bit
@@ -237,9 +250,9 @@ begin
 
 	end process;
 	
-	bits_sent_w: process(RST,stop,ack,tx,SCL)
+	bits_sent_w: process(RST,idle,ack,tx,SCL)
 	begin
-		if (RST ='1' or stop='1') then
+		if (RST ='1' or idle='1') then
 			bits_sent <= 0;
 		elsif(ack='1') then
 			bits_sent <= 0;
@@ -250,9 +263,9 @@ begin
 	
 	---------------fifo_sda_in write-----------------------------
 	---------------data read from bus----------------------------
-	serial_r: process(RST,stop,ack,rx,fifo_sda_in,SCL,SDA)
+	serial_r: process(RST,idle,ack,rx,fifo_sda_in,SCL,SDA)
 	begin
-		if (RST ='1' or stop='1') then
+		if (RST ='1' or idle='1') then
 			fifo_sda_in <= (others => '1');
 		--updates data received in falling edge because data is stable when SCL=1
 		elsif (rx='1' and rising_edge(SCL)) then
@@ -260,18 +273,18 @@ begin
 		end if;
 	end process;
 	
-	process(RST,stop,ack_data,fifo_sda_in,DR_in_shift)
+	process(RST,idle,ack_data,fifo_sda_in,DR_in_shift)
 	begin
-		if (RST ='1' or stop='1') then
+		if (RST ='1' or idle='1') then
 			DR_in_shift <= (others=>'0');
 		elsif(rising_edge(ack_data)) then
 			DR_in_shift <= (31 downto N =>'0') & fifo_sda_in;
 		end if;
 	end process;
 		
-	bits_received_w: process(RST,stop,ack,rx,SCL)
+	bits_received_w: process(RST,idle,ack,rx,SCL)
 	begin
-		if (RST ='1' or stop='1') then
+		if (RST ='1' or idle='1') then
 			bits_received <= 0;
 		elsif(ack='1') then
 			bits_received <= 0;
@@ -282,9 +295,9 @@ begin
 	
 	----------------------DR_shift write-----------------------------
 	-----this complex timing ensures DR_shift to be '1' at only one positive edge of CLK_IN
-	process(RST,stop,ack_data,clk_90_lead,read_mode)
+	process(RST,idle,ack_data,clk_90_lead,read_mode)
 	begin
-		if (RST ='1' or stop='1') then
+		if (RST ='1' or idle='1') then
 			DR_shift<='0';
 		elsif(ack_data='1' and clk_90_lead='1' and read_mode='1') then
 			DR_shift<='1';
@@ -294,13 +307,11 @@ begin
 	end process;
 	
 	---------------words_received write-----------------------------
-	process(RST,I2C_EN,rx,ack_data,stop)
+	process(RST,idle,I2C_EN,rx,ack_data)
 	begin
-		if (RST ='1' or stop='1') then
+		if (RST ='1' or idle='1') then
 			words_received <= 0;
 		elsif (I2C_EN = '1') then
-			words_received <= 0;
-		elsif (stop = '1') then
 			words_received <= 0;
 		elsif(rising_edge(ack_data) and rx='1')then
 			words_received <= words_received + 1;
@@ -312,13 +323,11 @@ begin
 	end process;
 	
 	---------------words_sent write-----------------------------
-	process(RST,I2C_EN,tx_data,ack,stop)
+	process(RST,I2C_EN,tx_data,ack,idle)
 	begin
-		if (RST ='1' or stop='1') then
+		if (RST ='1' or idle='1') then
 			words_sent <= 0;
 		elsif (I2C_EN = '1') then
-			words_sent <= 0;
-		elsif (stop = '1') then
 			words_sent <= 0;
 		elsif(rising_edge(ack) and tx_data='1')then
 			words_sent <= words_sent + 1;
@@ -330,9 +339,9 @@ begin
 	end process;
 	
 	---------------ack_addr flag generation----------------------
-	process(tx_addr,bits_sent,SCL,RST,stop)
+	process(tx_addr,bits_sent,SCL,RST,idle)
 	begin
-		if (RST ='1' or stop='1') then
+		if (RST ='1' or idle='1') then
 			ack_addr <= '0';
 		elsif	(falling_edge(SCL)) then
 			if (tx_addr='1' and bits_sent=N) then
@@ -346,9 +355,9 @@ begin
 	---------------ack_data flag generation----------------------
 	--ack data phase: master or slave should acknowledge, depending on ADDR(0)
 	--a single N-bit word was received or sent-------------------
-	process(rx,tx_data,bits_sent,bits_received,SCL,RST,stop)
+	process(rx,tx_data,bits_sent,bits_received,SCL,RST,idle)
 	begin
-		if (RST ='1' or stop='1') then
+		if (RST ='1' or idle='1') then
 			ack_data <= '0';
 		elsif	(falling_edge(SCL)) then
 			if ((tx_data='1' and bits_sent=N) or (rx='1' and bits_received=N)) then
@@ -360,9 +369,9 @@ begin
 	end process;
 
 	---------------ack_received flag generation----------------------------
-	process(ack,write_mode,ack_received,SCL,SDA,RST,stop)
+	process(ack,write_mode,ack_received,SCL,SDA,RST,idle)
 	begin
-		if (RST ='1' or stop='1') then
+		if (RST ='1' or idle='1') then
 			ack_received <= '0';
 			--to_x01 converts 'H','L' to '1','0', respectively. Needed only IN SIMULATION
 		elsif	(rising_edge(SCL)) then
@@ -371,9 +380,9 @@ begin
 	end process;
 	
 	---------------ack_finished flag generation----------------------------
-	ack_f: process(ack,SCL,SDA,RST,stop)
+	ack_f: process(ack,SCL,SDA,RST,idle)
 	begin
-		if (RST ='1') then
+		if (RST ='1' or idle='1') then
 			ack_finished <= '0';
 		elsif (SCL='1') then
 			ack_finished <= '0';
@@ -383,9 +392,9 @@ begin
 	end process;
 	
 	---------------ack_addr_received flag generation------------------------
-	process(RST,stop,ack_received)
+	process(RST,idle,ack_received)
 	begin
-		if (RST ='1' or stop='1') then
+		if (RST ='1' or idle='1') then
 			ack_addr_received <= '0';
 		--to_x01 converts 'H','L' to '1','0', respectively. Needed only IN SIMULATION
 		elsif	(rising_edge(ack_received)) then
@@ -394,9 +403,9 @@ begin
 	end process;
 	
 	---------------rx flag generation----------------------------
-	process(rx,ack,ack_data,read_mode,words_received,WORDS,SCL,RST,stop)
+	process(rx,ack,ack_data,read_mode,words_received,WORDS,SCL,RST,idle)
 	begin
-		if (RST ='1' or stop='1') then
+		if (RST ='1' or idle='1') then
 			rx	<= '0';
 		elsif (rx='1' and ack_data='1') then
 			rx	<= '0';
@@ -405,19 +414,16 @@ begin
 		end if;
 	end process;
 	
-	---------------SDA read----------------------------
---	serial_r: process()
-
 	---------------IRQ BTF----------------------------
 	---------byte transfer finished-------------------
 	----transmitted all words successfully------------
-	process(RST,IACK,stop,write_mode,words_sent,read_mode,words_received,WORDS)
+	process(RST,IACK,SCL,SDA,write_mode,words_sent,read_mode,words_received,WORDS)
 	begin
 		if(RST='1') then
 			IRQ(0) <= '0';
 		elsif (IACK(0) ='1') then
 			IRQ(0) <= '0';
-		elsif(rising_edge(stop) and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+		elsif(rising_edge(SDA) and SCL='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
 				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
 			IRQ(0) <= '1';
 		end if;
