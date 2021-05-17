@@ -72,6 +72,7 @@ architecture structure of i2c_slave is
 	component interrupt_controller
 	generic	(L: natural);--L: number of IRQ lines
 	port(	D: in std_logic_vector(31 downto 0);-- input: data to register write
+			ADDR: in std_logic_vector(1 downto 0);--address offset of registers relative to peripheral base address
 			CLK: in std_logic;-- input
 			RST: in std_logic;-- input
 			WREN: in std_logic;-- input
@@ -142,6 +143,7 @@ begin
 	irq_ctrl: interrupt_controller
 	generic map (L => 2)
 	port map(D => D,
+				ADDR => ADDR(1 downto 0),
 				CLK => CLK,
 				RST => RST,
 				WREN => irq_ctrl_wren,
