@@ -125,7 +125,8 @@ architecture structure of i2c_master is
 	signal CR_ena:std_logic;
 begin
 
-	read_mode <= CR_Q(0);
+	read_mode<= CR_Q(0);
+	words		<= CR_Q(9 downto 8);
 	
 	i2c: i2c_master_generic
 	generic map (N => N)
