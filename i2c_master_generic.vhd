@@ -42,7 +42,7 @@ architecture structure of i2c_master_generic is
 	);
 	end component;
 
-	signal fifo_sda_out: std_logic_vector(N downto 0);--data to write on SDA: one byte plus stop bit
+	signal fifo_sda_out: std_logic_vector(N-1 downto 0);--data to write on SDA: one byte plus stop bit
 	signal fifo_sda_in: std_logic_vector(N-1 downto 0);-- data read from SDA: one byte plus start and stop bits
 	
 	--signals representing I2C transfer state
@@ -62,7 +62,7 @@ architecture structure of i2c_master_generic is
 	signal idle: std_logic;-- i2c ready to start
 	
 	--signals inherent to this implementation
-	constant SCL_divider: natural := 100;--MUST BE EVEN, fSCL=fCLK/SCL_divider, e.g. 50MHz/100=500kHz
+	constant SCL_divider: natural := 100;--MUST BE EVEN, fSCL=fCLK/SCL_divider, e.g. 25MHz/100=250kHz
 	signal CLK: std_logic;--used to generate SCL (when scl_en = '1')
 	signal I2C_EN_stretched: std_logic;--used to generate start bit
 	
@@ -220,7 +220,7 @@ begin
 		elsif(rx='1')then
 			SDA <= 'Z';--releases the bus when reading, so slave can drive it
 		elsif(tx='1')then--SDA is driven using the fifo, which updates at rising_edge of clk_90_lead
-			if (fifo_sda_out(N) = '1') then
+			if (fifo_sda_out(N-1) = '1') then
 				SDA <= 'Z';
 			else
 				SDA <= '0';
@@ -233,21 +233,22 @@ begin
 	
 	---------------fifo_sda_out write-----------------------------
 	----might contain data from sda or from this component----
-	fifo_w: process(RST,idle,I2C_EN,tx,tx_data,rx,ack,ack_received,CLK_90_lead,DR_out,ADDR,WORDS,words_sent)
+	fifo_w: process(RST,idle,I2C_EN_stretched,tx,tx_data,ack,ack_received,clk_90_lead,DR_out,ADDR,WORDS,words_sent)
 	begin
 		if (RST ='1' or idle='1') then
 			fifo_sda_out <= (others => '1');
-		elsif (I2C_EN = '1') then
-			fifo_sda_out <= ADDR(N-1 downto 0) & '0';--ADDR(N-1 downto 0) & stop bit
-		elsif (tx_data = '1' and ack_received = '1') then
-			--DR_out(...) & dummy bits
-			fifo_sda_out <= DR_out(N-1+N*(to_integer(unsigned(WORDS))-words_sent)
-									downto 0+N*(to_integer(unsigned(WORDS))-words_sent)) & '1';
-		--updates fifo at rising edge of clk_90_lead so it can be read at rising_edge of SCL
-		elsif(tx='1' and rising_edge(CLK_90_lead))then
-			fifo_sda_out <= fifo_sda_out(N-1 downto 0) & '1';--MSB is sent first
+		elsif(rising_edge(clk_90_lead))then
+			if (I2C_EN_stretched = '1') then
+				fifo_sda_out <= ADDR(N-1 downto 0);
+			elsif (tx_data = '1' and ack_received = '1') then
+				--DR_out(...)
+				fifo_sda_out <= DR_out(N-1+N*(to_integer(unsigned(WORDS))-words_sent)
+										downto 0+N*(to_integer(unsigned(WORDS))-words_sent));
+			--updates fifo at rising edge of clk_90_lead so it can be read at rising_edge of SCL
+			elsif(tx='1')then
+				fifo_sda_out <= fifo_sda_out(N-2 downto 0) & '1';--MSB is sent first
+			end if;
 		end if;
-
 	end process;
 	
 	bits_sent_w: process(RST,idle,ack,tx,SCL)
