@@ -197,7 +197,7 @@ begin
 			scl_en <= '1';
 		end if;
 	end process;
-	SCL <= CLK when (scl_en = '1') else '1';
+	SCL <= CLK or (not scl_en);--keeps SCL='1' while scl_en='0', else, follows CLK
 
 	---------------SDA write----------------------------
 	--serial write on SDA bus
