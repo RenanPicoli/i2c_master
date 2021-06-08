@@ -121,26 +121,28 @@ begin
 	end process;
 	
 	---------------start flag generation----------------------------
-	process(RST,I2C_EN_stretched,clk_90_lead)
+	process(RST,I2C_EN_stretched,CLK_aux)
 	begin
 		if (RST ='1') then
 			start	<= '0';
-		elsif (clk_90_lead='1') then
-			start	<= '0';
 		--falling_edge e rising_edge don't need to_x01 because it is already used inside these functions
-		elsif	(falling_edge(I2C_EN_stretched)) then
-			start <= '1';
+		elsif	(rising_edge(CLK_aux)) then
+			if ( I2C_EN_stretched='1') then
+				start <= '1';
+			else
+				start <= '0';
+			end if;
 		end if;
 	end process;
 	
 	---------------I2C_EN_stretched flag generation----------------------------
-	process(RST,clk_90_lead,I2C_EN)
+	process(RST,SCL,I2C_EN)
 	begin
 		if (RST ='1') then
 			I2C_EN_stretched	<= '0';
 		elsif (I2C_EN='1') then
 			I2C_EN_stretched	<= '1';
-		elsif	(falling_edge(clk_90_lead)) then
+		elsif	(rising_edge(SCL)) then
 			I2C_EN_stretched <= '0';
 		end if;
 	end process;
@@ -163,14 +165,16 @@ begin
 	end process;
 	
 	---------------tx_addr flag generation----------------------------
-	process(ack,start,RST,idle)
+	process(ack,start,RST,idle,CLK_aux)
 	begin
 		if (RST ='1' or idle='1') then
 			tx_addr	<= '0';
-		elsif (ack='1') then
-			tx_addr	<= '0';
-		elsif	(falling_edge(start)) then
-			tx_addr <= '1';
+		elsif(rising_edge(CLK_aux)) then
+			if (ack='1') then
+				tx_addr	<= '0';
+			elsif	(start='1') then
+				tx_addr <= '1';
+			end if;
 		end if;
 	end process;
 	
@@ -233,19 +237,19 @@ begin
 	
 	---------------fifo_sda_out write-----------------------------
 	----might contain data from sda or from this component----
-	fifo_w: process(RST,idle,I2C_EN_stretched,tx,tx_data,ack,ack_received,clk_90_lead,DR_out,ADDR,WORDS,words_sent)
+	fifo_w: process(RST,idle,CLK_aux,I2C_EN_stretched,tx,ack_received,SCL,DR_out,ADDR,WORDS,words_sent)
 	begin
 		if (RST ='1' or idle='1') then
 			fifo_sda_out <= (others => '1');
-		elsif(rising_edge(clk_90_lead))then
+		elsif(rising_edge(CLK_aux))then
 			if (I2C_EN_stretched = '1') then
 				fifo_sda_out <= ADDR(N-1 downto 0);
-			elsif (tx_data = '1' and ack_received = '1') then
+			elsif (ack_received = '1' and SCL='1') then
 				--DR_out(...)
 				fifo_sda_out <= DR_out(N-1+N*(to_integer(unsigned(WORDS))-words_sent)
 										downto 0+N*(to_integer(unsigned(WORDS))-words_sent));
 			--updates fifo at rising edge of clk_90_lead so it can be read at rising_edge of SCL
-			elsif(tx='1')then
+			elsif(tx='1' and SCL='0')then
 				fifo_sda_out <= fifo_sda_out(N-2 downto 0) & '1';--MSB is sent first
 			end if;
 		end if;
