@@ -403,8 +403,8 @@ begin
 	begin
 		if (RST ='1' or idle='1') then
 			ack_finished <= '0';
-		elsif (SCL='1') then
-			ack_finished <= '0';
+--		elsif (SCL='1') then
+--			ack_finished <= '0';
 		elsif	(falling_edge(SCL)) then
 			ack_finished <= ack;--active HIGH, indicates the ack was high in previous scl cycle [0 1].
 		end if;
