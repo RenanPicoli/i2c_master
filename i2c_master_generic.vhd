@@ -28,6 +28,7 @@ entity i2c_master_generic is
 			IACK: in std_logic_vector(1 downto 0);--interrupt request: 0: successfully transmitted all words; 1: NACK received
 			IRQ: out std_logic_vector(1 downto 0);--interrupt request: 0: successfully transmitted all words; 1: NACK received
 			SDA: inout std_logic;--open drain data line
+			sda_dbg_p: out natural;--for debug, which statement is driving SDA
 			SCL: inout std_logic --open drain clock line
 	);
 end i2c_master_generic;
@@ -65,6 +66,7 @@ architecture structure of i2c_master_generic is
 	constant SCL_divider: natural := 100;--MUST BE EVEN, fSCL=fCLK/SCL_divider, e.g. 25MHz/100=250kHz
 	signal CLK: std_logic;--used to generate SCL (when scl_en = '1')
 	signal I2C_EN_stretched: std_logic;--used to generate start bit
+	signal sda_dbg: natural;--for debug, which statement is driving SDA
 	
 	signal CLK_aux: std_logic;--twice the frequency of SCL/CLK
 	-- CLK 90 degrees in advance, its rising_edge is used to write on SDA in middle of SCL low
@@ -79,6 +81,8 @@ architecture structure of i2c_master_generic is
 	signal scl_en: std_logic;--enables scl to follow CLK
 	
 begin
+	sda_dbg_p <= sda_dbg;
+
 	read_mode <= ADDR(0);
 	write_mode <= not read_mode;
 	tx <= tx_addr or tx_data;
@@ -209,47 +213,57 @@ begin
 	begin
 		if (RST ='1' or idle='1') then
 			SDA <= 'Z';
+			sda_dbg <= 0;
 		elsif (start = '1') then
 			SDA <= '0';--start bit
+			sda_dbg <= 1;
 		elsif (ack_data = '1' and read_mode='1') then
 			SDA <= '0';--master acknowledges
+			sda_dbg <= 2;
 		elsif (ack = '1' and write_mode='1') then
 			SDA <= 'Z';--allows the slave to acknowledge
+			sda_dbg <= 3;
 		elsif (stop = '1' and SCL='0') then
 			SDA <= '0';
+			sda_dbg <= 4;
 		elsif (stop = '1' and SCL='1' and clk_90_lead='0') then
 			SDA <= 'Z';
+			sda_dbg <= 5;
 		elsif (stop='1') then
 			SDA <= '0';
+			sda_dbg <= 6;
 		elsif(rx='1')then
-			SDA <= 'Z';--releases the bus when reading, so slave can drive it
+			SDA <= 'Z';--releases the bus when reading, so slave can drive it			
+			sda_dbg <= 7;
 		elsif(tx='1')then--SDA is driven using the fifo, which updates at rising_edge of clk_90_lead
 			if (fifo_sda_out(N-1) = '1') then
 				SDA <= 'Z';
 			else
 				SDA <= '0';
-			end if;
+			end if;			
+			sda_dbg <= 8;
 		else--statement to remove latch
 			SDA <= 'Z';--releases bus
+			sda_dbg <= 9;
 		end if;
 
 	end process;
 	
 	---------------fifo_sda_out write-----------------------------
 	----might contain data from sda or from this component----
-	fifo_w: process(RST,idle,CLK_aux,I2C_EN_stretched,tx,ack_received,SCL,DR_out,ADDR,WORDS,words_sent)
+	fifo_w: process(RST,idle,CLK_90_lead,I2C_EN_stretched,tx,ack_received,DR_out,ADDR,WORDS,words_sent)
 	begin
 		if (RST ='1' or idle='1') then
 			fifo_sda_out <= (others => '1');
-		elsif(rising_edge(CLK_aux))then
+		elsif(rising_edge(CLK_90_lead))then
 			if (I2C_EN_stretched = '1') then
 				fifo_sda_out <= ADDR(N-1 downto 0);
-			elsif (ack_received = '1' and SCL='1') then
+			elsif (ack_received = '1') then
 				--DR_out(...)
 				fifo_sda_out <= DR_out(N-1+N*(to_integer(unsigned(WORDS))-words_sent)
 										downto 0+N*(to_integer(unsigned(WORDS))-words_sent));
 			--updates fifo at rising edge of clk_90_lead so it can be read at rising_edge of SCL
-			elsif(tx='1' and SCL='0')then
+			elsif(tx='1')then
 				fifo_sda_out <= fifo_sda_out(N-2 downto 0) & '1';--MSB is sent first
 			end if;
 		end if;

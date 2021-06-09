@@ -24,6 +24,7 @@ entity i2c_master is
 			Q: out std_logic_vector(31 downto 0);--for register read
 			IRQ: out std_logic;--interrupt request
 			SDA: inout std_logic;--open drain data line
+			sda_dbg_p: out natural;--for debug, which statement is driving SDA
 			SCL: inout std_logic --open drain clock line
 	);
 end i2c_master;
@@ -69,6 +70,7 @@ architecture structure of i2c_master is
 			IACK: in std_logic_vector(1 downto 0);--interrupt request: 0: successfully transmitted all words; 1: NACK received
 			IRQ: out std_logic_vector(1 downto 0);--interrupt request: 0: successfully transmitted all words; 1: NACK received
 			SDA: inout std_logic;--open drain data line
+			sda_dbg_p: out natural;--for debug, which statement is driving SDA
 			SCL: inout std_logic --open drain clock line
 	);
 	end component;
@@ -123,8 +125,12 @@ architecture structure of i2c_master is
 	signal CR_wren:std_logic;
 	signal CR_rden:std_logic;
 	signal CR_ena:std_logic;
+	
+	signal sda_dbg_s: natural;--for debug, which statement is driving SDA
 begin
 
+	sda_dbg_p <= sda_dbg_s;
+	
 	read_mode<= CR_Q(0);
 	words		<= CR_Q(9 downto 8);
 	
@@ -141,6 +147,7 @@ begin
 				IACK => all_i2c_iack,
 				IRQ => all_i2c_irq,
 				SDA => SDA,
+				sda_dbg_p => sda_dbg_s,
 				SCL => SCL
 	);
 	
