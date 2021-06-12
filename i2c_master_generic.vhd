@@ -72,6 +72,7 @@ architecture structure of i2c_master_generic is
 	-- CLK 90 degrees in advance, its rising_edge is used to write on SDA in middle of SCL low
 	signal CLK_90_lead: std_logic;
 	
+	signal previous_SDA: std_logic;--SDA sampled at previous rising_edge of CLK_aux
 	signal ack_finished: std_logic;--active HIGH, indicates the ack was high in previous scl cycle [0 1].
 	signal bits_sent: natural;--number of bits transmitted
 	signal bits_received: natural;--number of bits received
@@ -151,9 +152,18 @@ begin
 		end if;
 	end process;
 	
+	process(RST,CLK_aux,SDA)
+	begin
+		if(RST='1') then
+			previous_SDA <= '0';
+		elsif (rising_edge(CLK_aux)) then
+			previous_SDA <= SDA;
+		end if;
+	end process;
+	
 	---------------stop flag generation----------------------------
 	----------stop flag will be used to drive sda,scl--------------
-	process(RST,idle,ack,write_mode,read_mode,ack_received,ack_addr_received,ack_finished,SDA,SCL,words_sent,words_received,WORDS)
+	process(RST,idle,CLK_aux,ack,write_mode,read_mode,ack_received,ack_addr_received,ack_finished,previous_SDA,SDA,SCL,words_sent,words_received,WORDS)
 	begin
 		if (RST ='1' or idle='1') then
 			stop	<= '0';
@@ -164,6 +174,7 @@ begin
 				then
 			stop <= '1';
 		elsif (rising_edge(SDA) and SCL='1') then
+--		elsif (SDA='1' and previous_SDA='0' and SCL='1') then
 			stop	<= '0';
 		end if;
 	end process;
@@ -255,30 +266,38 @@ begin
 	begin
 		if (RST ='1' or idle='1') then
 			fifo_sda_out <= (others => '1');
+			bits_sent <= 0;
 		elsif(rising_edge(CLK_90_lead))then
 			if (I2C_EN_stretched = '1') then
 				fifo_sda_out <= ADDR(N-1 downto 0);
+				bits_sent <= 1;
 			elsif (ack_received = '1') then
 				--DR_out(...)
 				fifo_sda_out <= DR_out(N-1+N*(to_integer(unsigned(WORDS))-words_sent)
 										downto 0+N*(to_integer(unsigned(WORDS))-words_sent));
+				bits_sent <= 1;
 			--updates fifo at rising edge of clk_90_lead so it can be read at rising_edge of SCL
 			elsif(tx='1')then
 				fifo_sda_out <= fifo_sda_out(N-2 downto 0) & '1';--MSB is sent first
+				bits_sent <= bits_sent + 1;--bits_sent=9 means ack state
 			end if;
 		end if;
 	end process;
 	
-	bits_sent_w: process(RST,idle,ack,tx,SCL)
-	begin
-		if (RST ='1' or idle='1') then
-			bits_sent <= 0;
-		elsif(ack='1') then
-			bits_sent <= 0;
-		elsif(tx='1' and rising_edge(SCL))then
-			bits_sent <= bits_sent + 1;
-		end if;
-	end process;
+--	bits_sent_w: process(RST,CLK_90_lead,I2C_EN_stretched,ack_received,idle,ack,tx)
+--	begin
+--		if (RST ='1' or idle='1') then
+--			bits_sent <= 0;
+--		elsif(rising_edge(CLK_90_lead))then--middle of SCL low
+--			if(ack='1') then
+--				bits_sent <= 0;
+--			elsif(I2C_EN_stretched = '1' or ack_received = '1') then--when fifo_sda_out loads the data/address
+--				bits_sent <= 1;
+--			elsif(tx='1')then
+--				bits_sent <= bits_sent + 1;
+--			end if;
+--		end if;
+--	end process;
 	
 	---------------fifo_sda_in write-----------------------------
 	---------------data read from bus----------------------------
@@ -358,11 +377,11 @@ begin
 	end process;
 	
 	---------------ack_addr flag generation----------------------
-	process(tx_addr,bits_sent,SCL,RST,idle)
+	process(tx_addr,bits_sent,CLK_90_lead,RST,idle)
 	begin
 		if (RST ='1' or idle='1') then
 			ack_addr <= '0';
-		elsif	(falling_edge(SCL)) then
+		elsif	(rising_edge(CLK_90_lead)) then
 			if (tx_addr='1' and bits_sent=N) then
 				ack_addr <= '1';
 			else
@@ -374,11 +393,11 @@ begin
 	---------------ack_data flag generation----------------------
 	--ack data phase: master or slave should acknowledge, depending on ADDR(0)
 	--a single N-bit word was received or sent-------------------
-	process(rx,tx_data,bits_sent,bits_received,SCL,RST,idle)
+	process(rx,tx_data,bits_sent,bits_received,CLK_90_lead,RST,idle)
 	begin
 		if (RST ='1' or idle='1') then
 			ack_data <= '0';
-		elsif	(falling_edge(SCL)) then
+		elsif	(rising_edge(CLK_90_lead)) then -- also falling_edge of SCL
 			if ((tx_data='1' and bits_sent=N) or (rx='1' and bits_received=N)) then
 				ack_data <= '1';
 			else
