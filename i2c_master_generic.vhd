@@ -114,13 +114,15 @@ begin
 	end process;
 	
 	---------------idle flag generation----------------------------
-	process(RST,stop,I2C_EN)
+	process(RST,stop,I2C_EN,CLK_90_lead)
 	begin
 		if(RST='1')then
 			idle <= '1';
 		elsif(I2C_EN='1')then
 			idle <= '0';
 		elsif(falling_edge(stop))then
+		-- rising_edge of CLK_90_lead marks middle of SCL='0' when transmitting
+--		elsif (rising_edge(CLK_90_lead) and SCL='1') then
 			idle <= '1';
 		end if;	
 	end process;
@@ -163,7 +165,7 @@ begin
 	
 	---------------stop flag generation----------------------------
 	----------stop flag will be used to drive sda,scl--------------
-	process(RST,idle,CLK_aux,ack,write_mode,read_mode,ack_received,ack_addr_received,ack_finished,previous_SDA,SDA,SCL,words_sent,words_received,WORDS)
+	process(RST,idle,CLK_aux,CLK_90_lead,ack,write_mode,read_mode,ack_received,ack_addr_received,ack_finished,previous_SDA,SDA,SCL,words_sent,words_received,WORDS)
 	begin
 		if (RST ='1' or idle='1') then
 			stop	<= '0';
@@ -173,7 +175,11 @@ begin
 				not(read_mode='1' and ack_addr_received='1')))--implicitly samples ack_received at falling_edge of ack
 				then
 			stop <= '1';
-		elsif (rising_edge(SDA) and SCL='1') then
+--		elsif (SCL='1' and SDA='1' and CLK_90_lead='1') then
+		-- rising_edge of CLK_90_lead marks middle of SCL='0' when transmitting
+--		elsif (rising_edge(CLK_90_lead) and SCL='1') then
+		elsif (rising_edge(CLK_aux) and SDA='1' and SCL='1') then
+--		elsif (rising_edge(SDA) and SCL='1') then
 --		elsif (SDA='1' and previous_SDA='0' and SCL='1') then
 			stop	<= '0';
 		end if;
@@ -241,7 +247,7 @@ begin
 			SDA <= 'Z';
 			sda_dbg <= 5;
 		elsif (stop='1') then
-			SDA <= '0';
+			SDA <= 'Z';
 			sda_dbg <= 6;
 		elsif(rx='1')then
 			SDA <= 'Z';--releases the bus when reading, so slave can drive it			
@@ -455,14 +461,28 @@ begin
 	---------------IRQ BTF----------------------------
 	---------byte transfer finished-------------------
 	----transmitted all words successfully------------
-	process(RST,IACK,SCL,SDA,write_mode,words_sent,read_mode,words_received,WORDS)
+	process(RST,CLK,CLK_90_lead,CLK_aux,stop,IACK,SCL,SDA,write_mode,words_sent,read_mode,words_received,WORDS)
 	begin
 		if(RST='1') then
 			IRQ(0) <= '0';
 		elsif (IACK(0) ='1') then
 			IRQ(0) <= '0';
-		elsif(rising_edge(SDA) and SCL='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+--		elsif(rising_edge(SDA) and SCL='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+--				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
+--		elsif(rising_edge(CLK_90_lead) and SCL='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+--				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
+--		elsif(rising_edge(CLK_aux) and SCL='1' and SDA='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+--				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
+--		elsif(CLK_aux='1' and SCL='1' and SDA='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+--				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
+--		elsif(CLK_90_lead='1' and SDA='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+--				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
+--		elsif(rising_edge(CLK) and SDA='1' and SCL='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+--				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
+		elsif(falling_edge(CLK_aux) and SCL='1' and SDA='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
 				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
+--		elsif(falling_edge(CLK) and SCL='1' and SDA='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+--				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
 			IRQ(0) <= '1';
 		end if;
 	end process;
