@@ -172,7 +172,7 @@ begin
 --		elsif (SCL='1' and SDA='1' and CLK_90_lead='1') then
 		-- rising_edge of CLK_90_lead marks middle of SCL='0' when transmitting
 --		elsif (rising_edge(CLK_90_lead) and SCL='1') then
-		elsif (rising_edge(CLK_aux) and to_X01(SDA)='1' and to_X01(SCL)='1') then
+		elsif (rising_edge(CLK_90_lead) and to_X01(SDA)='1' and to_X01(SCL)='1') then
 --		elsif (rising_edge(SDA) and SCL='1') then
 --		elsif (SDA='1' and previous_SDA='0' and SCL='1') then
 			stop	<= '0';
