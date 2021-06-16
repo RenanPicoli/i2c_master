@@ -169,19 +169,19 @@ begin
 	begin
 		if (RST ='1' or idle='1') then
 			stop	<= '0';
-		elsif	((ack='0' and ack_finished='1' and write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or--successfully wrote 
-				 (ack='0' and read_mode='1' and words_received=to_integer(unsigned(WORDS))+1) or--successfully read 
-				(ack='0' and ack_finished='1' and ack_received='0' and SCL='0' and--NACK
-				not(read_mode='1' and ack_addr_received='1')))--implicitly samples ack_received at falling_edge of ack
-				then
-			stop <= '1';
 --		elsif (SCL='1' and SDA='1' and CLK_90_lead='1') then
 		-- rising_edge of CLK_90_lead marks middle of SCL='0' when transmitting
 --		elsif (rising_edge(CLK_90_lead) and SCL='1') then
-		elsif (rising_edge(CLK_aux) and SDA='1' and SCL='1') then
+		elsif (rising_edge(CLK_aux) and to_X01(SDA)='1' and to_X01(SCL)='1') then
 --		elsif (rising_edge(SDA) and SCL='1') then
 --		elsif (SDA='1' and previous_SDA='0' and SCL='1') then
 			stop	<= '0';
+		elsif	((ack='0' and ack_finished='1' and write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or--successfully wrote 
+				 (ack='0' and read_mode='1' and words_received=to_integer(unsigned(WORDS))+1) or--successfully read 
+				(ack='1' and CLK_aux='1' and ack_received='0' and to_X01(SCL)='1' and--NACK
+				not(read_mode='1' and ack_addr_received='1')))--implicitly samples ack_received at falling_edge of ack
+				then
+			stop <= '1';
 		end if;
 	end process;
 	
@@ -277,7 +277,7 @@ begin
 			if (I2C_EN_stretched = '1') then
 				fifo_sda_out <= ADDR(N-1 downto 0);
 				bits_sent <= 1;
-			elsif (ack_received = '1') then
+			elsif (ack_received = '1' and (words_sent < to_integer(unsigned(WORDS))+1)) then
 				--DR_out(...)
 				fifo_sda_out <= DR_out(N-1+N*(to_integer(unsigned(WORDS))-words_sent)
 										downto 0+N*(to_integer(unsigned(WORDS))-words_sent));
@@ -479,24 +479,33 @@ begin
 --				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
 --		elsif(rising_edge(CLK) and SDA='1' and SCL='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
 --				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
-		elsif(falling_edge(CLK_aux) and SCL='1' and SDA='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
-				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
+--		elsif(falling_edge(CLK_aux) and SCL='1' and to_X01(SDA)='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+--				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
 --		elsif(falling_edge(CLK) and SCL='1' and SDA='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
 --				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
+
+		elsif(rising_edge(CLK_90_lead) and to_X01(SCL)='1' and to_X01(SDA)='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then--works in simulation
+--		elsif(rising_edge(CLK_aux) and CLK_90_lead='0' and to_X01(SCL)='1' and to_X01(SDA)='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+--				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then--works in simulation
+--		elsif(CLK_90_lead='1' and to_X01(SCL)='1' and to_X01(SDA)='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+--				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then--works in simulation
+--		elsif(CLK_90_lead='1' and CLK_aux='1' and to_X01(SCL)='1' and to_X01(SDA)='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+--				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then--works in simulation
 			IRQ(0) <= '1';
 		end if;
 	end process;
 	
 	---------------IRQ NACK---------------------------
 	-------------NACK received------------------------
-	process(RST,IACK,ack,ack_finished,ack_received,read_mode,ack_addr_received,stop,SCL)
+	process(RST,CLK_aux,IACK,ack,ack_finished,ack_received,read_mode,ack_addr_received,stop,SCL)
 	begin
 		if(RST='1') then
 			IRQ(1) <= '0';
 		elsif (IACK(1) ='1') then
 			IRQ(1) <= '0';
-		elsif(ack='0' and ack_finished='1' and ack_received='0' and not(read_mode='1' and ack_addr_received='1')
-					and not(stop='1') and SCL='0') then
+		elsif(ack='1' and CLK_aux='1' and ack_received='0' and not(read_mode='1' and ack_addr_received='1')
+					and not(stop='1') and to_X01(SCL)='1') then
 			IRQ(1) <= '1';
 		end if;
 	end process;
