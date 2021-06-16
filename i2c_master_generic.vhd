@@ -243,8 +243,8 @@ begin
 		elsif (stop = '1' and SCL='0') then
 			SDA <= '0';
 			sda_dbg <= 4;
-		elsif (stop = '1' and SCL='1' and clk_90_lead='0') then
-			SDA <= 'Z';
+		elsif (stop = '1' and SCL='1' and clk_90_lead='1') then
+			SDA <= '0';
 			sda_dbg <= 5;
 		elsif (stop='1') then
 			SDA <= 'Z';
