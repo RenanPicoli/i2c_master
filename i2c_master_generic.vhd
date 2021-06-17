@@ -70,7 +70,7 @@ architecture structure of i2c_master_generic is
 	
 	signal CLK_aux: std_logic;--twice the frequency of SCL/CLK
 	-- CLK 90 degrees in advance, its rising_edge is used to write on SDA in middle of SCL low
-	signal CLK_90_lead: std_logic;
+--	signal CLK_90_lead: std_logic;
 	
 	signal previous_SDA: std_logic;--SDA sampled at previous rising_edge of CLK_aux
 	signal ack_finished: std_logic;--active HIGH, indicates the ack was high in previous scl cycle [0 1].
@@ -103,18 +103,9 @@ begin
 				RST		=> RST,
 				CLK_OUT	=> CLK_aux
 	);
-	
-	scl_90_clk: process(CLK,RST,CLK_aux)
-	begin
-		if (RST='1') then
-			clk_90_lead <= '0';
-		elsif (rising_edge(CLK_aux)) then
-			clk_90_lead <= not CLK;
-		end if;
-	end process;
-	
+		
 	---------------idle flag generation----------------------------
-	process(RST,stop,I2C_EN,CLK_90_lead)
+	process(RST,stop,I2C_EN)
 	begin
 		if(RST='1')then
 			idle <= '1';
@@ -165,7 +156,7 @@ begin
 	
 	---------------stop flag generation----------------------------
 	----------stop flag will be used to drive sda,scl--------------
-	process(RST,idle,CLK_aux,CLK_90_lead,ack,write_mode,read_mode,ack_received,ack_addr_received,ack_finished,previous_SDA,SDA,SCL,words_sent,words_received,WORDS)
+	process(RST,idle,CLK_aux,CLK,ack,write_mode,read_mode,ack_received,ack_addr_received,ack_finished,previous_SDA,SDA,SCL,words_sent,words_received,WORDS)
 	begin
 		if (RST ='1' or idle='1') then
 			stop	<= '0';
@@ -173,7 +164,10 @@ begin
 		-- rising_edge of CLK_90_lead marks middle of SCL='0' when transmitting
 --		elsif (rising_edge(CLK_90_lead) and SCL='1') then
 --		elsif (rising_edge(CLK_90_lead) and to_X01(SDA)='1' and to_X01(SCL)='1') then
-		elsif (CLK_90_lead='1' and to_X01(SDA)='1' and to_X01(SCL)='1') then
+
+--		elsif (CLK_90_lead='1' and to_X01(SDA)='1' and to_X01(SCL)='1') then
+		elsif (CLK_aux='1' and CLK='0' and to_X01(SDA)='1' and to_X01(SCL)='1') then
+
 --		elsif (rising_edge(SDA) and SCL='1') then
 --		elsif (SDA='1' and previous_SDA='0' and SCL='1') then
 			stop	<= '0';
@@ -227,7 +221,7 @@ begin
 
 	---------------SDA write----------------------------
 	--serial write on SDA bus
-	serial_w: process(idle,start,tx,rx,fifo_sda_out,RST,ack,stop,SCL,clk_90_lead,read_mode,write_mode,ack_data)
+	serial_w: process(idle,start,tx,rx,fifo_sda_out,RST,ack,stop,scl_en,SCL,CLK_aux,CLK,read_mode,write_mode,ack_data)
 	begin
 		if (RST ='1' or idle='1') then
 			SDA <= 'Z';
@@ -241,40 +235,40 @@ begin
 		elsif (ack = '1' and write_mode='1') then
 			SDA <= 'Z';--allows the slave to acknowledge
 			sda_dbg <= 3;
-		elsif (stop = '1' and SCL='0') then
+		elsif (stop = '1' and (scl_en='1' or (CLK_aux='0' and CLK='1' and to_X01(SCL)='1'))) then
 			SDA <= '0';
 			sda_dbg <= 4;
-		elsif (stop = '1' and SCL='1' and clk_90_lead='1') then
-			SDA <= '0';
-			sda_dbg <= 5;
+--		elsif (stop = '1' and to_X01(SCL)='1' and CLK_aux='0') then
+--			SDA <= '0';
+--			sda_dbg <= 5;
 		elsif (stop='1') then
 			SDA <= 'Z';
 			sda_dbg <= 6;
 		elsif(rx='1')then
 			SDA <= 'Z';--releases the bus when reading, so slave can drive it			
 			sda_dbg <= 7;
-		elsif(tx='1')then--SDA is driven using the fifo, which updates at rising_edge of clk_90_lead
+		elsif(tx='1' and rising_edge(CLK_aux) and to_X01(SCL)='0')then--SDA is driven using the fifo, which updates at rising_edge of clk_90_lead
 			if (fifo_sda_out(N-1) = '1') then
 				SDA <= 'Z';
 			else
 				SDA <= '0';
 			end if;			
 			sda_dbg <= 8;
-		else--statement to remove latch
-			SDA <= 'Z';--releases bus
-			sda_dbg <= 9;
+--		else--statement to remove latch
+--			SDA <= 'Z';--releases bus
+--			sda_dbg <= 9;
 		end if;
 
 	end process;
 	
 	---------------fifo_sda_out write-----------------------------
 	----might contain data from sda or from this component----
-	fifo_w: process(RST,idle,CLK_90_lead,I2C_EN_stretched,tx,ack_received,DR_out,ADDR,WORDS,words_sent)
+	fifo_w: process(RST,idle,CLK_aux,CLK,I2C_EN_stretched,tx,ack_received,DR_out,ADDR,WORDS,words_sent)
 	begin
 		if (RST ='1' or idle='1') then
 			fifo_sda_out <= (others => '1');
 			bits_sent <= 0;
-		elsif(rising_edge(CLK_90_lead))then
+		elsif(rising_edge(CLK_aux) and CLK='1')then
 			if (I2C_EN_stretched = '1') then
 				fifo_sda_out <= ADDR(N-1 downto 0);
 				bits_sent <= 1;
@@ -369,15 +363,17 @@ begin
 	end process;
 	
 	---------------ack_addr flag generation----------------------
-	process(tx_addr,bits_sent,CLK_90_lead,RST,idle)
+	process(tx_addr,bits_sent,CLK_aux,CLK,RST,idle)
 	begin
 		if (RST ='1' or idle='1') then
 			ack_addr <= '0';
-		elsif	(rising_edge(CLK_90_lead)) then
-			if (tx_addr='1' and bits_sent=N) then
-				ack_addr <= '1';
-			else
+		elsif (CLK_aux='0' and CLK='0') then
 				ack_addr <= '0';
+		elsif	(rising_edge(CLK_aux) and CLK='0') then
+			if (tx_addr='1' and bits_sent=N+1) then
+				ack_addr <= '1';
+--			else
+--				ack_addr <= '0';
 			end if;
 		end if;
 	end process;
@@ -385,15 +381,17 @@ begin
 	---------------ack_data flag generation----------------------
 	--ack data phase: master or slave should acknowledge, depending on ADDR(0)
 	--a single N-bit word was received or sent-------------------
-	process(rx,tx_data,bits_sent,bits_received,CLK_90_lead,RST,idle)
+	process(rx,tx_data,bits_sent,bits_received,CLK_aux,CLK,RST,idle)
 	begin
 		if (RST ='1' or idle='1') then
 			ack_data <= '0';
-		elsif	(rising_edge(CLK_90_lead)) then -- also falling_edge of SCL
-			if ((tx_data='1' and bits_sent=N) or (rx='1' and bits_received=N)) then
-				ack_data <= '1';
-			else
+		elsif (CLK_aux='0' and CLK='0') then
 				ack_data <= '0';
+		elsif	(rising_edge(CLK_aux) and CLK='0') then -- also falling_edge of SCL
+			if ((tx_data='1' and bits_sent=N+1) or (rx='1' and bits_received=N+1)) then
+				ack_data <= '1';
+--			else
+--				ack_data <= '0';
 			end if;
 		end if;
 	end process;
@@ -447,7 +445,7 @@ begin
 	---------------IRQ BTF----------------------------
 	---------byte transfer finished-------------------
 	----transmitted all words successfully------------
-	process(RST,CLK,CLK_90_lead,CLK_aux,stop,IACK,SCL,SDA,write_mode,words_sent,read_mode,words_received,WORDS)
+	process(RST,CLK,CLK_aux,stop,IACK,SCL,SDA,write_mode,words_sent,read_mode,words_received,WORDS)
 	begin
 		if(RST='1') then
 			IRQ(0) <= '0';
@@ -470,14 +468,10 @@ begin
 --		elsif(falling_edge(CLK) and SCL='1' and SDA='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
 --				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
 
-		elsif(rising_edge(CLK_90_lead) and to_X01(SCL)='1' and to_X01(SDA)='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
+		elsif(rising_edge(CLK_aux) and CLK='0' and to_X01(SCL)='1' and to_X01(SDA)='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
 				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then--works in simulation
 --		elsif(rising_edge(CLK_aux) and CLK_90_lead='0' and to_X01(SCL)='1' and to_X01(SDA)='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
---				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then--works in simulation
---		elsif(CLK_90_lead='1' and to_X01(SCL)='1' and to_X01(SDA)='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
---				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then--works in simulation
---		elsif(CLK_90_lead='1' and CLK_aux='1' and to_X01(SCL)='1' and to_X01(SDA)='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
---				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then--works in simulation
+--				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
 			IRQ(0) <= '1';
 		end if;
 	end process;
