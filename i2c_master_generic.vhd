@@ -65,17 +65,19 @@ architecture structure of i2c_master_generic is
 	--signals inherent to this implementation
 	constant SCL_divider: natural := 100;--MUST BE EVEN, fSCL=fCLK/SCL_divider, e.g. 25MHz/100=250kHz
 	signal CLK: std_logic;--used to generate SCL (when scl_en = '1')
+	signal CLK_n: std_logic;--inverted CLK
+	
 	signal I2C_EN_stretched: std_logic;--used to generate start bit
 	signal sda_dbg: natural;--for debug, which statement is driving SDA
 	
 	signal CLK_aux: std_logic;--twice the frequency of SCL/CLK
-	-- CLK 90 degrees in advance, its rising_edge is used to write on SDA in middle of SCL low
---	signal CLK_90_lead: std_logic;
+	-- CLK_aux negated degrees in advance, its rising_edge is used to write on SDA in middle of SCL low
+	signal CLK_aux_n: std_logic;
 	
 	signal previous_SDA: std_logic;--SDA sampled at previous rising_edge of CLK_aux
 	signal ack_finished: std_logic;--active HIGH, indicates the ack was high in previous scl cycle [0 1].
-	signal bits_sent: natural;--number of bits transmitted
-	signal bits_received: natural;--number of bits received
+	signal tx_bit_number: natural;--number of bit being transmitted (starts from 1)
+	signal rx_bit_number: natural;--number of bit being received (starts from 1)
 	signal words_sent: natural;--number of words(bytes) transmitted
 	signal words_received: natural;--number of words(bytes) received
 	
@@ -91,11 +93,12 @@ begin
 	
 	---------------clock generation----------------------------
 	scl_clk: prescaler
-	generic map (factor => SCL_divider)
-	port map(CLK_IN	=> CLK_IN,
+	generic map (factor => 2)
+	port map(CLK_IN	=> CLK_aux_n,
 				RST		=> RST,
-				CLK_OUT	=> CLK
+				CLK_OUT	=> CLK_n
 	);
+	CLK <= not CLK_n;
 	
 	CLK_aux_clk: prescaler
 	generic map (factor => SCL_divider/2)
@@ -103,6 +106,7 @@ begin
 				RST		=> RST,
 				CLK_OUT	=> CLK_aux
 	);
+	CLK_aux_n <=  not CLK_aux;
 		
 	---------------idle flag generation----------------------------
 	process(RST,stop,I2C_EN)
@@ -119,7 +123,7 @@ begin
 	end process;
 	
 	---------------start flag generation----------------------------
-	process(RST,I2C_EN_stretched,CLK_aux)
+	process(RST,I2C_EN_stretched,CLK_aux,CLK)
 	begin
 		if (RST ='1') then
 			start	<= '0';
@@ -134,13 +138,13 @@ begin
 	end process;
 	
 	---------------I2C_EN_stretched flag generation----------------------------
-	process(RST,SCL,I2C_EN)
+	process(RST,start,CLK_aux,I2C_EN)
 	begin
 		if (RST ='1') then
 			I2C_EN_stretched	<= '0';
 		elsif (I2C_EN='1') then
 			I2C_EN_stretched	<= '1';
-		elsif	(rising_edge(SCL)) then
+		elsif	(start='1' and CLK_aux='0') then
 			I2C_EN_stretched <= '0';
 		end if;
 	end process;
@@ -166,42 +170,47 @@ begin
 --		elsif (rising_edge(CLK_90_lead) and to_X01(SDA)='1' and to_X01(SCL)='1') then
 
 --		elsif (CLK_90_lead='1' and to_X01(SDA)='1' and to_X01(SCL)='1') then
-		elsif (CLK_aux='1' and CLK='0' and to_X01(SDA)='1' and to_X01(SCL)='1') then
+--		elsif (CLK_aux='1' and CLK='0' and to_X01(SDA)='1' and to_X01(SCL)='1') then
 
 --		elsif (rising_edge(SDA) and SCL='1') then
 --		elsif (SDA='1' and previous_SDA='0' and SCL='1') then
-			stop	<= '0';
-		elsif	((ack='0' and ack_finished='1' and write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or--successfully wrote 
-				 (ack='0' and read_mode='1' and words_received=to_integer(unsigned(WORDS))+1) or--successfully read 
-				(ack='1' and CLK_aux='1' and ack_received='0' and to_X01(SCL)='1' and--NACK
+--			stop	<= '0';
+		elsif	(rising_edge(CLK_aux)) then
+			if ((ack='1' and ack_received='1' and write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or--successfully wrote 
+				 (ack='1' and read_mode='1' and words_received=to_integer(unsigned(WORDS))+1) or--successfully read 
+				(ack='1' and ack_received='0' and to_X01(SCL)='1' and--NACK
 				not(read_mode='1' and ack_addr_received='1')))--implicitly samples ack_received at falling_edge of ack
 				then
-			stop <= '1';
+				stop <= '1';
+			elsif (CLK='0' and to_X01(SDA)='1' and to_X01(SCL)='1') then
+				stop	<= '0';
+			end if;
 		end if;
 	end process;
 	
 	---------------tx_addr flag generation----------------------------
 	process(ack,start,RST,idle,CLK_aux)
 	begin
-		if (RST ='1' or idle='1') then
+		if (RST ='1' or idle='1' or ack='1') then
 			tx_addr	<= '0';
 		elsif(rising_edge(CLK_aux)) then
-			if (ack='1') then
-				tx_addr	<= '0';
-			elsif	(start='1') then
+--			if (ack='1') then
+--				tx_addr	<= '0';
+--			elsif	(start='1') then
+			if	(start='1') then
 				tx_addr <= '1';
 			end if;
 		end if;
 	end process;
 	
 	---------------tx_data flag generation----------------------------
-	process(tx_data,ack,ack_received,write_mode,bits_sent,words_sent,WORDS,SCL,RST,idle)
+	process(tx_data,ack,ack_received,write_mode,tx_bit_number,words_sent,WORDS,CLK_aux,RST,idle)
 	begin
 		if (RST ='1' or idle='1') then
 			tx_data <= '0';
-		elsif (tx_data='1' and ack='1' and bits_sent=N) then
+		elsif (tx_data='1' and ack='1' and tx_bit_number=N+1) then
 			tx_data <= '0';
-		elsif	(ack='1' and ack_received='1' and write_mode='1' and (words_sent/=to_integer(unsigned(WORDS))+1) and falling_edge(SCL)) then
+		elsif	(ack='1' and ack_received='1' and write_mode='1' and (words_sent/=to_integer(unsigned(WORDS))+1) and rising_edge(CLK_aux)) then
 			tx_data <= '1';
 		end if;
 	end process;
@@ -211,17 +220,17 @@ begin
 	begin
 		if (RST ='1' or idle='1') then
 			scl_en	<= '0';
-		elsif (stop = '1' and SCL = '1') then
-			scl_en	<= '0';
-		elsif	((start='1' or tx ='1' or rx ='1') and falling_edge(CLK)) then
+		elsif	(start='1' or tx ='1' or rx ='1') then
 			scl_en <= '1';
+		elsif (stop = '1' and rising_edge(SCL)) then
+			scl_en	<= '0';
 		end if;
 	end process;
 	SCL <= CLK or (not scl_en);--keeps SCL='1' while scl_en='0', else, follows CLK
 
 	---------------SDA write----------------------------
 	--serial write on SDA bus
-	serial_w: process(idle,start,tx,rx,fifo_sda_out,RST,ack,stop,scl_en,SCL,CLK_aux,CLK,read_mode,write_mode,ack_data)
+	serial_w: process(idle,start,tx,rx,fifo_sda_out,RST,ack,stop,scl_en,SDA,SCL,CLK_aux,CLK,read_mode,write_mode,ack_data)
 	begin
 		if (RST ='1' or idle='1') then
 			SDA <= 'Z';
@@ -235,19 +244,19 @@ begin
 		elsif (ack = '1' and write_mode='1') then
 			SDA <= 'Z';--allows the slave to acknowledge
 			sda_dbg <= 3;
+		elsif (stop = '1' and scl_en='0' and to_X01(SDA)='1') then--traps SDA in high level
+			SDA <= 'Z';
+			sda_dbg <= 6;
 		elsif (stop = '1' and (scl_en='1' or (CLK_aux='0' and CLK='1' and to_X01(SCL)='1'))) then
 			SDA <= '0';
 			sda_dbg <= 4;
---		elsif (stop = '1' and to_X01(SCL)='1' and CLK_aux='0') then
---			SDA <= '0';
---			sda_dbg <= 5;
-		elsif (stop='1') then
+		elsif (stop='1' and scl_en='0' and CLK_aux='0') then
 			SDA <= 'Z';
-			sda_dbg <= 6;
+			sda_dbg <= 5;
 		elsif(rx='1')then
 			SDA <= 'Z';--releases the bus when reading, so slave can drive it			
 			sda_dbg <= 7;
-		elsif(tx='1' and rising_edge(CLK_aux) and to_X01(SCL)='0')then--SDA is driven using the fifo, which updates at rising_edge of clk_90_lead
+		elsif(tx='1' and to_X01(SCL)='0' and CLK_aux='1')then--SDA is driven using the fifo, which updates at rising_edge of clk_90_lead
 			if (fifo_sda_out(N-1) = '1') then
 				SDA <= 'Z';
 			else
@@ -267,20 +276,20 @@ begin
 	begin
 		if (RST ='1' or idle='1') then
 			fifo_sda_out <= (others => '1');
-			bits_sent <= 0;
+			tx_bit_number <= 0;
 		elsif(rising_edge(CLK_aux) and CLK='1')then
 			if (I2C_EN_stretched = '1') then
 				fifo_sda_out <= ADDR(N-1 downto 0);
-				bits_sent <= 1;
+				tx_bit_number <= 1;
 			elsif (ack_received = '1' and (words_sent < to_integer(unsigned(WORDS))+1)) then
 				--DR_out(...)
 				fifo_sda_out <= DR_out(N-1+N*(to_integer(unsigned(WORDS))-words_sent)
 										downto 0+N*(to_integer(unsigned(WORDS))-words_sent));
-				bits_sent <= 1;
+				tx_bit_number <= 1;
 			--updates fifo at rising edge of clk_90_lead so it can be read at rising_edge of SCL
 			elsif(tx='1')then
 				fifo_sda_out <= fifo_sda_out(N-2 downto 0) & '1';--MSB is sent first
-				bits_sent <= bits_sent + 1;--bits_sent=9 means ack state
+				tx_bit_number <= tx_bit_number + 1;--tx_bit_number=9 means ack state
 			end if;
 		end if;
 	end process;
@@ -306,14 +315,14 @@ begin
 --		end if;
 --	end process;
 --		
---	bits_received_w: process(RST,idle,ack,rx,SCL)
+--	rx_bit_number_w: process(RST,idle,ack,rx,SCL)
 --	begin
 --		if (RST ='1' or idle='1') then
---			bits_received <= 0;
+--			rx_bit_number <= 0;
 --		elsif(ack='1') then
---			bits_received <= 0;
+--			rx_bit_number <= 0;
 --		elsif(rx='1' and rising_edge(SCL))then
---			bits_received <= bits_received + 1;
+--			rx_bit_number <= rx_bit_number + 1;
 --		end if;
 --	end process;
 --	
@@ -363,17 +372,17 @@ begin
 	end process;
 	
 	---------------ack_addr flag generation----------------------
-	process(tx_addr,bits_sent,CLK_aux,CLK,RST,idle)
+	process(tx_addr,tx_bit_number,CLK_aux,CLK,RST,idle)
 	begin
 		if (RST ='1' or idle='1') then
 			ack_addr <= '0';
-		elsif (CLK_aux='0' and CLK='0') then
-				ack_addr <= '0';
-		elsif	(rising_edge(CLK_aux) and CLK='0') then
-			if (tx_addr='1' and bits_sent=N+1) then
-				ack_addr <= '1';
---			else
+--		elsif (CLK_aux='0' and CLK='0') then
 --				ack_addr <= '0';
+		elsif	(rising_edge(CLK_aux)) then
+			if (tx_addr='1' and tx_bit_number=N+1  and CLK='0') then
+				ack_addr <= '1';
+			else
+				ack_addr <= '0';
 			end if;
 		end if;
 	end process;
@@ -381,17 +390,17 @@ begin
 	---------------ack_data flag generation----------------------
 	--ack data phase: master or slave should acknowledge, depending on ADDR(0)
 	--a single N-bit word was received or sent-------------------
-	process(rx,tx_data,bits_sent,bits_received,CLK_aux,CLK,RST,idle)
+	process(rx,tx_data,tx_bit_number,rx_bit_number,CLK_aux,CLK,RST,idle)
 	begin
 		if (RST ='1' or idle='1') then
 			ack_data <= '0';
-		elsif (CLK_aux='0' and CLK='0') then
-				ack_data <= '0';
-		elsif	(rising_edge(CLK_aux) and CLK='0') then -- also falling_edge of SCL
-			if ((tx_data='1' and bits_sent=N+1) or (rx='1' and bits_received=N+1)) then
-				ack_data <= '1';
---			else
+--		elsif (CLK_aux='0' and CLK='0') then
 --				ack_data <= '0';
+		elsif	(rising_edge(CLK_aux)) then -- also falling_edge of SCL
+			if (((tx_data='1' and tx_bit_number=N+1) or (rx='1' and rx_bit_number=N+1)) and CLK='0') then
+				ack_data <= '1';
+			else
+				ack_data <= '0';
 			end if;
 		end if;
 	end process;
