@@ -74,7 +74,6 @@ architecture structure of i2c_master_generic is
 	-- CLK_aux negated degrees in advance, its rising_edge is used to write on SDA in middle of SCL low
 	signal CLK_aux_n: std_logic;
 	
-	signal previous_SDA: std_logic;--SDA sampled at previous rising_edge of CLK_aux
 	signal ack_finished: std_logic;--active HIGH, indicates the ack was high in previous scl cycle [0 1].
 	signal tx_bit_number: natural;--number of bit being transmitted (starts from 1)
 	signal rx_bit_number: natural;--number of bit being received (starts from 1)
@@ -127,10 +126,11 @@ begin
 	begin
 		if (RST ='1') then
 			start	<= '0';
-		--falling_edge e rising_edge don't need to_x01 because it is already used inside these functions
 		elsif	(rising_edge(CLK_aux)) then
-			if ( I2C_EN_stretched='1') then
+			--waits for the first posedge of CLK_aux with CLK='1' and I2C_EN_stretched='1' to assert start
+			if ( I2C_EN_stretched='1' and CLK='1') then
 				start <= '1';
+			--deasserts start next posedge of CLK_aux
 			else
 				start <= '0';
 			end if;
@@ -138,29 +138,21 @@ begin
 	end process;
 	
 	---------------I2C_EN_stretched flag generation----------------------------
-	process(RST,start,CLK_aux,I2C_EN)
+	process(RST,CLK_aux,CLK,I2C_EN)
 	begin
 		if (RST ='1') then
 			I2C_EN_stretched	<= '0';
 		elsif (I2C_EN='1') then
 			I2C_EN_stretched	<= '1';
-		elsif	(start='1' and CLK_aux='0') then
+		--waits for the first posedge of CLK_aux with CLK='1' and I2C_EN_stretched='1', then clears this flag
+		elsif	(rising_edge(CLK_aux) and CLK='1') then
 			I2C_EN_stretched <= '0';
 		end if;
 	end process;
 	
---	process(RST,CLK_aux,SDA)
---	begin
---		if(RST='1') then
---			previous_SDA <= '0';
---		elsif (rising_edge(CLK_aux)) then
---			previous_SDA <= SDA;
---		end if;
---	end process;
-	
 	---------------stop flag generation----------------------------
 	----------stop flag will be used to drive sda,scl--------------
-	process(RST,idle,CLK_aux,CLK,ack,write_mode,read_mode,ack_received,ack_addr_received,ack_finished,previous_SDA,SDA,SCL,words_sent,words_received,WORDS)
+	process(RST,idle,CLK_aux,CLK,ack,write_mode,read_mode,ack_received,ack_addr_received,ack_finished,SDA,SCL,words_sent,words_received,WORDS)
 	begin
 		if (RST ='1' or idle='1') then
 			stop	<= '0';
@@ -220,7 +212,7 @@ begin
 	begin
 		if (RST ='1' or idle='1') then
 			scl_en	<= '0';
-		elsif	(start='1' or tx ='1' or rx ='1') then
+		elsif	(start='1' or tx ='1' or rx ='1' or ack='1') then
 			scl_en <= '1';
 		elsif (stop = '1' and rising_edge(SCL)) then
 			scl_en	<= '0';
@@ -278,7 +270,7 @@ begin
 			fifo_sda_out <= (others => '1');
 			tx_bit_number <= 0;
 		elsif(rising_edge(CLK_aux) and CLK='1')then
-			if (I2C_EN_stretched = '1') then
+			if (I2C_EN_stretched = '1') then--waits for the first posedge of CLK_aux with CLK='1' and I2C_EN_stretched='1'
 				fifo_sda_out <= ADDR(N-1 downto 0);
 				tx_bit_number <= 1;
 			elsif (ack_received = '1' and (words_sent < to_integer(unsigned(WORDS))+1)) then
