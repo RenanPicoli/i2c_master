@@ -108,15 +108,14 @@ begin
 	CLK_aux_n <=  not CLK_aux;
 		
 	---------------idle flag generation----------------------------
-	process(RST,stop,I2C_EN)
+	process(RST,stop,I2C_EN,CLK_aux,CLK,SDA,SCL)
 	begin
 		if(RST='1')then
 			idle <= '1';
 		elsif(I2C_EN='1')then
 			idle <= '0';
-		elsif(falling_edge(stop))then
-		-- rising_edge of CLK_90_lead marks middle of SCL='0' when transmitting
---		elsif (rising_edge(CLK_90_lead) and SCL='1') then
+		--returns to idle after stop falls
+		elsif(rising_edge(CLK_aux) and CLK='0' and to_X01(SDA)='1' and to_X01(SCL)='1' and stop='1')then
 			idle <= '1';
 		end if;	
 	end process;
@@ -156,17 +155,6 @@ begin
 	begin
 		if (RST ='1' or idle='1') then
 			stop	<= '0';
---		elsif (SCL='1' and SDA='1' and CLK_90_lead='1') then
-		-- rising_edge of CLK_90_lead marks middle of SCL='0' when transmitting
---		elsif (rising_edge(CLK_90_lead) and SCL='1') then
---		elsif (rising_edge(CLK_90_lead) and to_X01(SDA)='1' and to_X01(SCL)='1') then
-
---		elsif (CLK_90_lead='1' and to_X01(SDA)='1' and to_X01(SCL)='1') then
---		elsif (CLK_aux='1' and CLK='0' and to_X01(SDA)='1' and to_X01(SCL)='1') then
-
---		elsif (rising_edge(SDA) and SCL='1') then
---		elsif (SDA='1' and previous_SDA='0' and SCL='1') then
---			stop	<= '0';
 		elsif	(rising_edge(CLK_aux)) then
 			if ((ack='1' and ack_received='1' and write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or--successfully wrote 
 				 (ack='1' and read_mode='1' and words_received=to_integer(unsigned(WORDS))+1) or--successfully read 
@@ -186,9 +174,6 @@ begin
 		if (RST ='1' or idle='1' or ack='1') then
 			tx_addr	<= '0';
 		elsif(rising_edge(CLK_aux)) then
---			if (ack='1') then
---				tx_addr	<= '0';
---			elsif	(start='1') then
 			if	(start='1') then
 				tx_addr <= '1';
 			end if;
@@ -348,13 +333,14 @@ begin
 --	end process;
 	
 	---------------words_sent write-----------------------------
-	process(RST,I2C_EN,tx_data,ack,idle)
+	process(RST,I2C_EN,tx_data,ack,idle,CLK_aux,CLK,tx_bit_number)
 	begin
 		if (RST ='1' or idle='1') then
 			words_sent <= 0;
 		elsif (I2C_EN = '1') then
 			words_sent <= 0;
-		elsif(rising_edge(ack) and tx_data='1')then
+--		elsif(rising_edge(ack) and tx_data='1')then
+		elsif(rising_edge(CLK_aux) and CLK='0' and tx_data='1' and tx_bit_number=N+1)then
 			words_sent <= words_sent + 1;
 			if (words_sent = to_integer(unsigned(WORDS))+1) then
 				words_sent <= 0;
@@ -368,8 +354,6 @@ begin
 	begin
 		if (RST ='1' or idle='1') then
 			ack_addr <= '0';
---		elsif (CLK_aux='0' and CLK='0') then
---				ack_addr <= '0';
 		elsif	(rising_edge(CLK_aux)) then
 			if (tx_addr='1' and tx_bit_number=N+1  and CLK='0') then
 				ack_addr <= '1';
@@ -386,8 +370,6 @@ begin
 	begin
 		if (RST ='1' or idle='1') then
 			ack_data <= '0';
---		elsif (CLK_aux='0' and CLK='0') then
---				ack_data <= '0';
 		elsif	(rising_edge(CLK_aux)) then -- also falling_edge of SCL
 			if (((tx_data='1' and tx_bit_number=N+1) or (rx='1' and rx_bit_number=N+1)) and CLK='0') then
 				ack_data <= '1';
@@ -413,20 +395,18 @@ begin
 	begin
 		if (RST ='1' or idle='1') then
 			ack_finished <= '0';
---		elsif (SCL='1') then
---			ack_finished <= '0';
 		elsif	(falling_edge(SCL)) then
 			ack_finished <= ack;--active HIGH, indicates the ack was high in previous scl cycle [0 1].
 		end if;
 	end process;
 	
 	---------------ack_addr_received flag generation------------------------
-	process(RST,idle,ack_received)
+	process(RST,idle,ack_received,CLK_aux,CLK,ack_addr)
 	begin
 		if (RST ='1' or idle='1') then
 			ack_addr_received <= '0';
-		--to_x01 converts 'H','L' to '1','0', respectively. Needed only IN SIMULATION
-		elsif	(rising_edge(ack_received)) then
+--		elsif	(rising_edge(ack_received)) then
+		elsif	(rising_edge(CLK_aux) and CLK='1' and ack_addr='1' and ack_received='1') then
 			ack_addr_received <= '1';
 		end if;
 	end process;
@@ -452,27 +432,8 @@ begin
 			IRQ(0) <= '0';
 		elsif (IACK(0) ='1') then
 			IRQ(0) <= '0';
---		elsif(rising_edge(SDA) and SCL='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
---				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
---		elsif(rising_edge(CLK_90_lead) and SCL='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
---				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
---		elsif(rising_edge(CLK_aux) and SCL='1' and SDA='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
---				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
---		elsif(CLK_aux='1' and SCL='1' and SDA='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
---				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
---		elsif(CLK_90_lead='1' and SDA='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
---				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
---		elsif(rising_edge(CLK) and SDA='1' and SCL='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
---				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
---		elsif(falling_edge(CLK_aux) and SCL='1' and to_X01(SDA)='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
---				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
---		elsif(falling_edge(CLK) and SCL='1' and SDA='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
---				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
-
 		elsif(rising_edge(CLK_aux) and CLK='0' and to_X01(SCL)='1' and to_X01(SDA)='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
 				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then--works in simulation
---		elsif(rising_edge(CLK_aux) and CLK_90_lead='0' and to_X01(SCL)='1' and to_X01(SDA)='1' and stop='1' and ((write_mode='1' and words_sent=to_integer(unsigned(WORDS))+1) or
---				(read_mode='1' and words_received=to_integer(unsigned(WORDS))+1))) then
 			IRQ(0) <= '1';
 		end if;
 	end process;
@@ -490,6 +451,5 @@ begin
 			IRQ(1) <= '1';
 		end if;
 	end process;
-
 	
 end structure;
