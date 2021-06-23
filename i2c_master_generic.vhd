@@ -193,7 +193,7 @@ begin
 	end process;
 	
 	---------------SCL generation----------------------------
-	process(start,stop,idle,SCL,tx,rx,CLK,RST)
+	process(start,stop,idle,SCL,tx,rx,ack,CLK,RST)
 	begin
 		if (RST ='1' or idle='1') then
 			scl_en	<= '0';
