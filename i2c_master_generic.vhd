@@ -207,12 +207,12 @@ begin
 
 	---------------SDA write----------------------------
 	--serial write on SDA bus
-	serial_w: process(idle,start,tx,rx,fifo_sda_out,RST,ack,stop,scl_en,SDA,SCL,CLK_aux,CLK,read_mode,write_mode,ack_data)
+	serial_w: process(idle,I2C_EN_stretched,start,tx,rx,fifo_sda_out,RST,ack,stop,scl_en,SDA,SCL,CLK_aux,CLK,read_mode,write_mode,ack_data)
 	begin
 		if (RST ='1' or idle='1') then
 			SDA <= 'Z';
 			sda_dbg <= 0;
-		elsif (start = '1') then
+		elsif (start = '1' or I2C_EN_stretched='1') then
 			SDA <= '0';--start bit
 			sda_dbg <= 1;
 		elsif (ack_data = '1' and read_mode='1') then
@@ -221,41 +221,40 @@ begin
 		elsif (ack = '1' and write_mode='1') then
 			SDA <= 'Z';--allows the slave to acknowledge
 			sda_dbg <= 3;
-		elsif (stop = '1' and scl_en='0' and to_X01(SDA)='1') then--traps SDA in high level
-			SDA <= 'Z';
-			sda_dbg <= 6;
-		elsif (stop = '1' and (scl_en='1' or (CLK_aux='0' and CLK='1' and to_X01(SCL)='1'))) then
+--			elsif (stop = '1' and scl_en='0' and to_X01(SDA)='1') then--traps SDA in high level
+--				SDA <= 'Z';
+--				sda_dbg <= 6;
+		elsif (stop = '1' and (scl_en='1' or not((CLK='1' and CLK_aux='1')or(CLK='0' and CLK_aux='0')))) then
 			SDA <= '0';
 			sda_dbg <= 4;
-		elsif (stop='1' and scl_en='0' and CLK_aux='0') then
+		elsif (stop='1' and scl_en='0' and ((CLK='1' and CLK_aux='1')or(CLK='0' and CLK_aux='0'))) then
 			SDA <= 'Z';
 			sda_dbg <= 5;
 		elsif(rx='1')then
 			SDA <= 'Z';--releases the bus when reading, so slave can drive it			
 			sda_dbg <= 7;
-		elsif(tx='1' and to_X01(SCL)='0' and CLK_aux='1')then--SDA is driven using the fifo, which updates at rising_edge of clk_90_lead
+--			elsif(tx='1' and to_X01(SCL)='0')then--SDA is driven using the fifo, which updates at rising_edge of clk_90_lead
+		else-- only option left is transmission (tx='1')
 			if (fifo_sda_out(N-1) = '1') then
 				SDA <= 'Z';
 			else
 				SDA <= '0';
 			end if;			
 			sda_dbg <= 8;
---		else--statement to remove latch
---			SDA <= 'Z';--releases bus
---			sda_dbg <= 9;
 		end if;
 
 	end process;
 	
 	---------------fifo_sda_out write-----------------------------
 	----might contain data from sda or from this component----
-	fifo_w: process(RST,idle,CLK_aux,CLK,I2C_EN_stretched,tx,ack_received,DR_out,ADDR,WORDS,words_sent)
+	fifo_w: process(RST,idle,CLK_aux,CLK,I2C_EN_stretched,start,tx,ack_received,DR_out,ADDR,WORDS,words_sent)
 	begin
 		if (RST ='1' or idle='1') then
 			fifo_sda_out <= (others => '1');
 			tx_bit_number <= 0;
-		elsif(rising_edge(CLK_aux) and CLK='1')then
-			if (I2C_EN_stretched = '1') then--waits for the first posedge of CLK_aux with CLK='1' and I2C_EN_stretched='1'
+		elsif(rising_edge(CLK_aux) and CLK='0')then
+--			if (I2C_EN_stretched = '1') then--waits for the first posedge of CLK_aux with CLK='1' and I2C_EN_stretched='1'
+			if (start = '1') then--waits for the first posedge of CLK_aux with CLK='1' and I2C_EN_stretched='1'
 				fifo_sda_out <= ADDR(N-1 downto 0);
 				tx_bit_number <= 1;
 			elsif (ack_received = '1' and (words_sent < to_integer(unsigned(WORDS))+1)) then
@@ -333,14 +332,14 @@ begin
 --	end process;
 	
 	---------------words_sent write-----------------------------
-	process(RST,I2C_EN,tx_data,ack,idle,CLK_aux,CLK,tx_bit_number)
+	process(RST,I2C_EN,tx_data,ack_data,idle,CLK_aux,CLK,tx_bit_number)
 	begin
 		if (RST ='1' or idle='1') then
 			words_sent <= 0;
 		elsif (I2C_EN = '1') then
 			words_sent <= 0;
 --		elsif(rising_edge(ack) and tx_data='1')then
-		elsif(rising_edge(CLK_aux) and CLK='0' and tx_data='1' and tx_bit_number=N+1)then
+		elsif(rising_edge(CLK_aux) and CLK='1' and ack_data='1' and tx_bit_number=N+1)then
 			words_sent <= words_sent + 1;
 			if (words_sent = to_integer(unsigned(WORDS))+1) then
 				words_sent <= 0;
@@ -354,8 +353,8 @@ begin
 	begin
 		if (RST ='1' or idle='1') then
 			ack_addr <= '0';
-		elsif	(rising_edge(CLK_aux)) then
-			if (tx_addr='1' and tx_bit_number=N+1  and CLK='0') then
+		elsif	(rising_edge(CLK_aux) and CLK='0') then
+			if (tx_addr='1' and tx_bit_number=N) then
 				ack_addr <= '1';
 			else
 				ack_addr <= '0';
@@ -370,8 +369,8 @@ begin
 	begin
 		if (RST ='1' or idle='1') then
 			ack_data <= '0';
-		elsif	(rising_edge(CLK_aux)) then -- also falling_edge of SCL
-			if (((tx_data='1' and tx_bit_number=N+1) or (rx='1' and rx_bit_number=N+1)) and CLK='0') then
+		elsif	(rising_edge(CLK_aux) and CLK='0') then -- also falling_edge of SCL
+			if (((tx_data='1' and tx_bit_number=N) or (rx='1' and rx_bit_number=N))) then
 				ack_data <= '1';
 			else
 				ack_data <= '0';
