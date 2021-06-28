@@ -104,7 +104,6 @@ architecture structure of i2c_master is
 
 	constant N: natural := 8;--number of bits in each data written/read
 	signal read_mode: std_logic;
-	signal words: std_logic_vector(1 downto 0);--00: 1 word; 01:2 words; 10: 3 words (unused); 11: 4 words
 	signal all_i2c_irq: std_logic_vector(1 downto 0);--0: successfully transmitted all words; 1: NACK received
 	signal all_i2c_iack: std_logic_vector(1 downto 0);--0: successfully transmitted all words; 1: NACK received
 	
@@ -132,7 +131,6 @@ begin
 	sda_dbg_p <= sda_dbg_s;
 	
 	read_mode<= CR_Q(0);
-	words		<= CR_Q(9 downto 8);
 	
 	i2c: i2c_master_generic
 	generic map (N => N)

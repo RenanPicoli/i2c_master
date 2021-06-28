@@ -74,7 +74,6 @@ architecture structure of i2c_master_generic is
 	-- CLK_aux negated degrees in advance, its rising_edge is used to write on SDA in middle of SCL low
 	signal CLK_aux_n: std_logic;
 	
-	signal ack_finished: std_logic;--active HIGH, indicates the ack was high in previous scl cycle [0 1].
 	signal tx_bit_number: natural;--number of bit being transmitted (starts from 1)
 	signal rx_bit_number: natural;--number of bit being received (starts from 1)
 	signal words_sent: natural;--number of words(bytes) transmitted
@@ -151,7 +150,7 @@ begin
 	
 	---------------stop flag generation----------------------------
 	----------stop flag will be used to drive sda,scl--------------
-	process(RST,idle,CLK_aux,CLK,ack,write_mode,read_mode,ack_received,ack_addr_received,ack_finished,SDA,SCL,words_sent,words_received,WORDS)
+	process(RST,idle,CLK_aux,CLK,ack,write_mode,read_mode,ack_received,ack_addr_received,SDA,SCL,words_sent,words_received,WORDS)
 	begin
 		if (RST ='1' or idle='1') then
 			stop	<= '0';
@@ -390,16 +389,6 @@ begin
 		end if;
 	end process;
 	
-	---------------ack_finished flag generation----------------------------
-	ack_f: process(ack,SCL,SDA,RST,idle)
-	begin
-		if (RST ='1' or idle='1') then
-			ack_finished <= '0';
-		elsif	(falling_edge(SCL)) then
-			ack_finished <= ack;--active HIGH, indicates the ack was high in previous scl cycle [0 1].
-		end if;
-	end process;
-	
 	---------------ack_addr_received flag generation------------------------
 	process(RST,idle,ack_received,CLK_aux,CLK,ack_addr)
 	begin
@@ -440,7 +429,7 @@ begin
 	
 	---------------IRQ NACK---------------------------
 	-------------NACK received------------------------
-	process(RST,CLK_aux,IACK,ack,ack_finished,ack_received,read_mode,ack_addr_received,stop,SCL)
+	process(RST,CLK_aux,IACK,ack,ack_received,read_mode,ack_addr_received,stop,SCL)
 	begin
 		if(RST='1') then
 			IRQ(1) <= '0';
