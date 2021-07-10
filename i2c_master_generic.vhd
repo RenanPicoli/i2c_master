@@ -180,26 +180,32 @@ begin
 	end process;
 	
 	---------------tx_data flag generation----------------------------
-	process(tx_data,ack,ack_received,write_mode,tx_bit_number,words_sent,WORDS,CLK_aux,RST,idle)
+	process(tx_data,ack,ack_received,write_mode,tx_bit_number,words_sent,WORDS,CLK_aux,CLK,RST,idle)
 	begin
-		if (RST ='1' or idle='1' or (tx_data='1' and ack='1' and tx_bit_number=N+1)) then
+		if (RST ='1' or idle='1') then
 			tx_data <= '0';
 		elsif	(rising_edge(CLK_aux)) then
 			if (ack='1' and ack_received='1' and write_mode='1' and (words_sent/=to_integer(unsigned(WORDS))+1)) then
 				tx_data <= '1';
+			elsif (tx_bit_number=N and CLK='0') then
+				tx_data <= '0';
 			end if;
 		end if;
 	end process;
 	
 	---------------SCL generation----------------------------
-	process(start,stop,idle,SCL,tx,rx,ack,CLK,RST)
+	process(start,stop,idle,I2C_EN_stretched,CLK,SCL,tx,rx,ack,CLK_aux,RST)
 	begin
 		if (RST ='1' or idle='1') then
 			scl_en	<= '0';
-		elsif	(start='1' or tx ='1' or rx ='1' or ack='1') then
-			scl_en <= '1';
-		elsif (stop = '1' and rising_edge(SCL)) then
-			scl_en	<= '0';
+		elsif (stop='1' and SCL='1' and CLK_aux='0') then--captures stop='1' and rising_edge(SCL)
+			scl_en <= '0';
+		elsif(rising_edge(CLK_aux)) then
+			if	(I2C_EN_stretched='1' and CLK='1') then
+				scl_en <= '1';
+--			elsif (stop = '1') then
+--				scl_en	<= '0';
+			end if;
 		end if;
 	end process;
 	SCL <= CLK or (not scl_en);--keeps SCL='1' while scl_en='0', else, follows CLK
