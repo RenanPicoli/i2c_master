@@ -182,12 +182,12 @@ begin
 	---------------tx_data flag generation----------------------------
 	process(tx_data,ack,ack_received,write_mode,tx_bit_number,words_sent,WORDS,CLK_aux,RST,idle)
 	begin
-		if (RST ='1' or idle='1') then
+		if (RST ='1' or idle='1' or (tx_data='1' and ack='1' and tx_bit_number=N+1)) then
 			tx_data <= '0';
-		elsif (tx_data='1' and ack='1' and tx_bit_number=N+1) then
-			tx_data <= '0';
-		elsif	(ack='1' and ack_received='1' and write_mode='1' and (words_sent/=to_integer(unsigned(WORDS))+1) and rising_edge(CLK_aux)) then
-			tx_data <= '1';
+		elsif	(rising_edge(CLK_aux)) then
+			if (ack='1' and ack_received='1' and write_mode='1' and (words_sent/=to_integer(unsigned(WORDS))+1)) then
+				tx_data <= '1';
+			end if;
 		end if;
 	end process;
 	
@@ -262,7 +262,7 @@ begin
 										downto 0+N*(to_integer(unsigned(WORDS))-words_sent));
 				tx_bit_number <= 1;
 			--updates fifo at rising edge of clk_90_lead so it can be read at rising_edge of SCL
-			elsif(tx='1')then
+			else--if(tx='1')then
 				fifo_sda_out <= fifo_sda_out(N-2 downto 0) & '1';--MSB is sent first
 				tx_bit_number <= tx_bit_number + 1;--tx_bit_number=9 means ack state
 			end if;
