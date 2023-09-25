@@ -80,6 +80,8 @@ architecture structure of i2c_master_generic is
 	signal words_received: natural;--number of words(bytes) received
 	
 	signal scl_en: std_logic;--enables scl to follow CLK
+	attribute preserve : boolean;
+	attribute preserve of sda_dbg : signal is true;
 	
 begin
 	sda_dbg_p <= sda_dbg;

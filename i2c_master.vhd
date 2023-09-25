@@ -128,6 +128,10 @@ architecture structure of i2c_master is
 	signal CR_ena:std_logic;
 	
 	signal sda_dbg_s: natural;--for debug, which statement is driving SDA
+	
+	attribute preserve : boolean;
+	attribute preserve of all_i2c_irq : signal is true;
+	attribute preserve of all_i2c_iack : signal is true;
 begin
 
 	sda_dbg_p <= sda_dbg_s;
